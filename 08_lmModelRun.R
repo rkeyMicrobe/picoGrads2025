@@ -48,7 +48,7 @@ applyNames <- function(object = NULL){
   return(object)
 }
 
-# LOAD FUNCTIONS
+ # LOAD FUNCTIONS
 get_varComponents <- function(result_output = NULL){
   # Pull information
   model_summary <- summary(result_output)
@@ -75,12 +75,12 @@ get_varComponents <- function(result_output = NULL){
     geom_col(color = "#282A36") +
     coord_polar(theta = "y") +
     scale_fill_manual(values = c(
-                                 "#49C5B1", # Archs #"#FF69B4", # Cyano
-                                 "#DA4949", # Dino
-                                 "#F1FA8C", # Haptos
-                                 "#7570B3",
-                                 "#ADECF9", # diatoms
-                                 "#ff7f00",
+                                 "#66C2A5", # Archs #"#FF69B4", # Cyano
+                                 "#FC8D62", # Dino
+                                 "#FFD92F", # Haptos
+                                 "#E78AC3",
+                                 "#8DA0CB", # diatoms
+                                 "#E5C494",
                                  "#44475A")) + # ERROR
     xlim(c(1.15, hole + 1)) +
     labs(fill = paste0("Response: ", var)) +
@@ -174,8 +174,8 @@ getQQ <- function(residuals = NULL){
 pc <- applyNames(gmats$carbon)
 pn <- applyNames(gmats$nitrogen)
 net <- applyNames(gmats$netCom)
-
 top = 0
+
 # ------------------------------------------------------------------------------------------
 # PARTICULATE NITROGEN
 # ------------------------------------------------------------------------------------------
@@ -212,8 +212,7 @@ getResidualPlots(filename = paste0(fig_dir, "/pclmm_", var, "_res_t", top, ".png
                  residuals = model$residuals, fitted_values = model$fitted)
 # EXTRACT QQ
 p <- getQQ(residuals = model$residuals); p
-svg(paste0("results/", directory, "/", var, "/pclmm_", var, "_QQ_t", top, ".svg"), 
-    height = 5, width = 6); p; dev.off()
+svg(paste0(fig_dir, "pclmm_", var, "_QQ_t", top, ".svg"), height = 5, width = 6); p; dev.off()
 
 # VARIANCE COMPONENTS
 p <- get_varComponents(result_output = model); p
@@ -259,8 +258,7 @@ getResidualPlots(filename = paste0(fig_dir, "/pclmm_", var, "_res_t", top, ".png
                  residuals = model$residuals, fitted_values = model$fitted)
 # EXTRACT QQ
 p <- getQQ(residuals = model$residuals); p
-svg(paste0("results/", directory, "/", var, "/pclmm_", var, "_QQ_t", top, ".svg"), 
-    height = 5, width = 6); p; dev.off()
+svg(paste0(fig_dir, "pclmm_", var, "_QQ_t", top, ".svg"), height = 5, width = 6); p; dev.off()
 
 # VARIANCE COMPONENTS
 p <- get_varComponents(result_output = model); p
@@ -308,8 +306,7 @@ getResidualPlots(filename = paste0(fig_dir, "/pclmm_", var, "_res_t", top, ".png
                  residuals = model$residuals, fitted_values = model$fitted)
 # EXTRACT QQ
 p <- getQQ(residuals = model$residuals); p
-svg(paste0("results/", directory, "/", var, "/pclmm_", var, "_QQ_t", top, ".svg"), 
-    height = 5, width = 6); p; dev.off()
+svg(paste0(fig_dir, "pclmm_", var, "_QQ_t", top, ".svg"), height = 5, width = 6); p; dev.off()
 
 # VARIANCE COMPONENTS
 p <- get_varComponents(result_output = model); p
@@ -319,7 +316,6 @@ svg(paste0(fig_dir, "pclmm_", var, "_varComp_t", top, ".svg"), height = 8, width
 # FIXED VARIABLE COEFFICIENTS
 p <- getBetas(result_output = model); p
 p; svg(paste0(fig_dir, "pclmm_", var, "_Coeff_t", top, ".svg"), height = 5, width = 8); p; dev.off()
-
 
 ############################################################################################
 # PIT Residual Analysis -- IN DEVELOPMENT!! 

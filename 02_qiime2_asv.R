@@ -41,17 +41,24 @@ RSK_THEME <-  theme_bw() +
 dat_dir = "data_out/02_qiime2_asv/dataframes/"
 fig_dir = "data_out/02_qiime2_asv/figures/"
 tab_dir = "data_out/02_qiime2_asv/tables/"
+zenodo = "data_out/02_qiime2_asv/zenodo/"
 
 ##############################################################################################
 # Load in dataframes
 ##############################################################################################
 
 # Fetch sample metaData
-meta <- read.csv("data_in/meta/g123_meta.csv")
+meta <- read.csv("data_in/Gradients_metadata.csv") %>% tibble %>% 
+  rename(sampleID = sample.id,
+         station = station.exp)
 
 # LOAD AMPLICON COUNT TABLES
 read_count_table <- function(cruise_name, count_table_path) {
-  samps <- read_csv("data_in/meta/g123_meta.csv") %>% 
+  
+  meta <- read.csv("data_in/Gradients_metadata.csv") %>% tibble %>% 
+    rename(sampleID = sample.id,
+           station = station.exp)
+  samps <- meta %>% 
     filter(cruise == cruise_name) %>% 
     select(sampleID) %>% 
     pull()
@@ -249,20 +256,34 @@ save_as_image(
 # GENERATE OBJECTS FOR PHYLOSEQ
 ############################################################################################
 
+meta <- read.csv("data_in/Gradients_metadata.csv") %>% tibble %>% 
+  rename(sampleID = sample.id,
+         station = station.exp) %>%
+  mutate(
+    depth = case_when(
+      depth == "DCM" ~ "60",
+      depth == "surface" ~ "0",
+      depth == "" ~ NA_character_,
+      TRUE ~ depth
+    )
+  ) %>% 
+  drop_na(latitude)
+
+unique(meta$depth)
 # GET SAMPLE IDS PER GRADIENT CRUISE
-get_cruise_samples <- function(cruise_name) {
-  metadata <- read_csv("data_in/meta/g123_meta.csv")
+get_cruise_samples <- function(cruise_name, metaData) {
+  metadata <- metaData
   samples <- metadata %>% filter(cruise == cruise_name) %>% pull(sampleID)
   return(samples)
 }
-g1samps <- get_cruise_samples("G1"); length(g1samps)
-g2samps <- get_cruise_samples("G2"); length(g2samps)
-g3samps <- get_cruise_samples("G3"); length(g3samps)
+g1samps <- get_cruise_samples("G1", metaData = meta); length(g1samps)
+g2samps <- get_cruise_samples("G2", metaData = meta); length(g2samps)
+g3samps <- get_cruise_samples("G3", metaData = meta); length(g3samps)
 
 # ----------------------------------------------------------------------------------------
 # PROKARYOTES 
 
-process_16s_data <- function(cruise_dir, cruise_name, sample_filter) {
+process_16s_data <- function(cruise_dir, cruise_name, sample_filter, metaData) {
   # Load asvs
   counts <- read.csv(paste0(cruise_dir, "/g", cruise_name, "_16s_countTable.csv"), sep = "\t")
   colnames(counts) <- str_remove(colnames(counts), pattern = "X")
@@ -290,8 +311,9 @@ process_16s_data <- function(cruise_dir, cruise_name, sample_filter) {
                   "species" = '7')
   TAX <- tax_table(as.matrix(df2))
   # Load meta
-  meta <- read.csv("data_in/meta/g123_meta.csv") %>%
-    filter(cruise == paste0("G", cruise_name))
+  meta <- metaData %>%
+    filter(cruise == paste0("G", cruise_name)) %>% 
+    data.frame()
   rownames(meta) <- meta$sampleID
   SAMPS <- sample_data(meta)
   # Load seqs
@@ -305,9 +327,12 @@ process_16s_data <- function(cruise_dir, cruise_name, sample_filter) {
   phy_merged <- merge_phyloseq(phy, SEQS)
   return(phy_merged)
 }
-phy_g1_16s <- process_16s_data(cruise_dir = "data_in/g1", cruise_name = "1", sample_filter = g1samps)
-phy_g2_16s <- process_16s_data(cruise_dir = "data_in/g2", cruise_name = "2", sample_filter = g2samps)
-phy_g3_16s <- process_16s_data(cruise_dir = "data_in/g3", cruise_name = "3", sample_filter = g3samps)
+phy_g1_16s <- process_16s_data(cruise_dir = "data_in/g1", cruise_name = "1", 
+                               sample_filter = g1samps, metaData = meta)
+phy_g2_16s <- process_16s_data(cruise_dir = "data_in/g2", cruise_name = "2", 
+                               sample_filter = g2samps, metaData = meta)
+phy_g3_16s <- process_16s_data(cruise_dir = "data_in/g3", cruise_name = "3", 
+                               sample_filter = g3samps, metaData = meta)
 
 saveRDS(phy_g1_16s, paste0(dat_dir, "g1_16s_phylo.RDS"))
 saveRDS(phy_g2_16s, paste0(dat_dir, "g2_16s_phylo.RDS"))
@@ -315,8 +340,7 @@ saveRDS(phy_g3_16s, paste0(dat_dir, "g3_16s_phylo.RDS"))
 
 # ----------------------------------------------------------------------------------------
 # EUKARYOTES
-
-process_18s_data <- function(cruise_dir, cruise_name, sample_filter) {
+process_18s_data <- function(cruise_dir, cruise_name, sample_filter, metaData) {
   # Load asvs
   counts <- read.csv(paste0(cruise_dir, "/g", cruise_name, "_18s_countTable.csv"), sep = "\t")
   colnames(counts) <- str_remove(colnames(counts), pattern = "X")
@@ -347,8 +371,9 @@ process_18s_data <- function(cruise_dir, cruise_name, sample_filter) {
   df2 <- df2 %>% column_to_rownames(var = "featureID")
   TAX <- tax_table(as.matrix(df2))
   # Load meta
-  meta <- read.csv("data_in/meta/g123_meta.csv") %>%
-    filter(cruise == paste0("G", cruise_name))
+  meta <- metaData %>%
+    filter(cruise == paste0("G", cruise_name)) %>% 
+    data.frame()
   rownames(meta) <- meta$sampleID
   SAMPS <- sample_data(meta)
   # Load seqs
@@ -364,9 +389,9 @@ process_18s_data <- function(cruise_dir, cruise_name, sample_filter) {
   return(phy_merged)
 }
 
-phy_g1_18s <- process_18s_data(cruise_dir = "data_in/g1", cruise_name = "1", sample_filter = g1samps)
-phy_g2_18s <- process_18s_data(cruise_dir = "data_in/g2", cruise_name = "2", sample_filter = g2samps)
-phy_g3_18s <- process_18s_data(cruise_dir = "data_in/g3", cruise_name = "3", sample_filter = g3samps)
+phy_g1_18s <- process_18s_data(cruise_dir = "data_in/g1", cruise_name = "1", sample_filter = g1samps, metaData = meta)
+phy_g2_18s <- process_18s_data(cruise_dir = "data_in/g2", cruise_name = "2", sample_filter = g2samps, metaData = meta)
+phy_g3_18s <- process_18s_data(cruise_dir = "data_in/g3", cruise_name = "3", sample_filter = g3samps, metaData = meta)
 
 saveRDS(phy_g1_18s, paste0(dat_dir, "g1_18s_phylo.RDS"))
 saveRDS(phy_g2_18s, paste0(dat_dir, "g2_18s_phylo.RDS"))
@@ -391,11 +416,105 @@ saveRDS(phyR_g1_18s, paste0(dat_dir, "g1_18s_phylo_r35k.RDS"))
 saveRDS(phyR_g2_18s, paste0(dat_dir, "g2_18s_phylo_r10k.RDS"))
 saveRDS(phyR_g3_18s, paste0(dat_dir, "g3_18s_phylo_r70k.RDS"))
 
+############################################################################################
+# GENERATE ORIGINALS, UNRAREFY DATAFRAMES FOR ZENODO
+############################################################################################
+
+saveZenodo <- function(data = NULL){
+  counts_phyl <- otu_table(data) %>% data.frame() %>% rownames_to_column(var = "featureID") %>% tibble
+  taxonomy_phyl <- tax_table(data) %>% data.frame() %>% rownames_to_column(var = "featureID") 
+  asv_seqs <- refseq(data)
+  asv_seqs_tbl <- tibble(
+    featureID = names(asv_seqs),
+    sequence = as.character(asv_seqs)
+  )
+  taxonomy_phyl <- taxonomy_phyl %>% left_join(asv_seqs_tbl, by = "featureID") %>% tibble
+  
+  meta_phyl <- sample_data(data) %>% data.frame() %>% tibble
+  times <- read_csv("data_in/Gradients_smpTimes.csv") %>% 
+    select(sampleID, time_UTC) %>% distinct
+  meta_phyl <- meta_phyl %>% left_join(., times , by = "sampleID")
+  
+  dfs <- list(ASV = counts_phyl, TAX = taxonomy_phyl, META = meta_phyl)
+  return(dfs)
+}
+
+dfs <- saveZenodo(data = phy_g1_18s)
+dataDescription = "G1_18S"
+write.csv(dfs$ASV, paste0(zenodo, dataDescription, "_Counts.csv"), row.names = F)
+write.csv(dfs$TAX, paste0(zenodo, dataDescription, "_Taxonomy.csv"), row.names = F)
+write.csv(dfs$META, paste0(zenodo, dataDescription, "_SmpMeta.csv"), row.names = F)
+
+dfs <- saveZenodo(data = phy_g2_18s)
+dataDescription = "G2_18S"
+write.csv(dfs$ASV, paste0(zenodo, dataDescription, "_Counts.csv"), row.names = F)
+write.csv(dfs$TAX, paste0(zenodo, dataDescription, "_Taxonomy.csv"), row.names = F)
+write.csv(dfs$META, paste0(zenodo, dataDescription, "_SmpMeta.csv"), row.names = F)
+
+dfs <- saveZenodo(data = phy_g3_18s)
+dataDescription = "G3_18S"
+write.csv(dfs$ASV, paste0(zenodo, dataDescription, "_Counts.csv"), row.names = F)
+write.csv(dfs$TAX, paste0(zenodo, dataDescription, "_Taxonomy.csv"), row.names = F)
+write.csv(dfs$META, paste0(zenodo, dataDescription, "_SmpMeta.csv"), row.names = F)
+
+# -------------
+
+saveZenodo <- function(data = NULL){
+  counts_phyl <- otu_table(data) %>% data.frame() %>% rownames_to_column(var = "featureID") %>% tibble
+  taxonomy_phyl <- tax_table(data) %>% data.frame()
+  asv_seqs <- refseq(data)
+  asv_seqs_tbl <- tibble(
+    featureID = names(asv_seqs),
+    sequence = as.character(asv_seqs)
+  )
+  taxonomy_phyl <- taxonomy_phyl %>% left_join(asv_seqs_tbl, by = "featureID") %>% tibble
+  
+  meta_phyl <- sample_data(data) %>% data.frame() %>% tibble
+  times <- read_csv("data_in/Gradients_smpTimes.csv") %>% 
+    select(sampleID, time_UTC) %>% distinct
+  meta_phyl <- meta_phyl %>% left_join(., times , by = "sampleID")
+  
+  dfs <- list(ASV = counts_phyl, TAX = taxonomy_phyl, META = meta_phyl)
+  return(dfs)
+}
+
+dfs <- saveZenodo(data = phy_g1_16s)
+dataDescription = "G1_16S"
+write.csv(dfs$ASV, paste0(zenodo, dataDescription, "_Counts.csv"), row.names = F)
+write.csv(dfs$TAX, paste0(zenodo, dataDescription, "_Taxonomy.csv"), row.names = F)
+write.csv(dfs$META, paste0(zenodo, dataDescription, "_SmpMeta.csv"), row.names = F)
+
+dfs <- saveZenodo(data = phy_g2_16s)
+dataDescription = "G2_16S"
+write.csv(dfs$ASV, paste0(zenodo, dataDescription, "_Counts.csv"), row.names = F)
+write.csv(dfs$TAX, paste0(zenodo, dataDescription, "_Taxonomy.csv"), row.names = F)
+write.csv(dfs$META, paste0(zenodo, dataDescription, "_SmpMeta.csv"), row.names = F)
+
+dfs <- saveZenodo(data = phy_g3_16s)
+dataDescription = "G3_16S"
+write.csv(dfs$ASV, paste0(zenodo, dataDescription, "_Counts.csv"), row.names = F)
+write.csv(dfs$TAX, paste0(zenodo, dataDescription, "_Taxonomy.csv"), row.names = F)
+write.csv(dfs$META, paste0(zenodo, dataDescription, "_SmpMeta.csv"), row.names = F)
+
 
 ############################################################################################
 # GENERATE MASTER DATAFRAMES
 ############################################################################################
 library("feather")
+
+meta <- read.csv("data_in/Gradients_metadata.csv") %>% tibble %>% 
+  rename(sampleID = sample.id,
+         station = station.exp) %>%
+  mutate(
+    depth = case_when(
+      depth == "DCM" ~ "60",
+      depth == "surface" ~ "0",
+      depth == "" ~ NA_character_,
+      TRUE ~ depth
+    )
+  ) %>% 
+  drop_na(latitude) %>% 
+  filter(latitude > 15)
 
 # ----------------------------------------------------------------------------------------
 # PROKARYOTES
@@ -417,7 +536,7 @@ process_data <- function(df, rarefyDepth) {
   seqs <- data.frame(featureID = rownames(seqs), seqs) %>% tibble() %>%
     rename("taxa" = 2)
   # pull in basic meta
-  meta <- read.csv("data_in/meta/g123_meta.csv") %>% 
+  meta <- meta %>% 
     select(sampleID, cruise, station, latitude, longitude, depth, filter)
   # Make master
   tc <- merge(tax, count, by = "featureID")
@@ -471,7 +590,7 @@ process_data <- function(df, rarefyDepth) {
   seqs <- data.frame(refseq(df))
   seqs <- data.frame(featureID = rownames(seqs), seqs) %>% tibble() %>% rename("taxa" = 2)
   # pull in basic meta
-  meta <- read.csv("data_in/meta/g123_meta.csv") %>% 
+  meta <- meta %>% 
     select(sampleID, cruise, station, latitude, longitude, depth, filter)
   # Make master
   tc <- merge(tax, count, by = "featureID")
@@ -531,7 +650,7 @@ plot_PCoA <- function(ps.ord, color_var, custom_scale = NULL) {
 
 # PROKARYOTES
 set.seed(1); ps.ord.pro <- ordinate(phy_pro, "PCoA", "bray")
-p1 <- plot_PCoA(ps.ord.pro, 'latitude', scale_grad)
+p1 <- plot_PCoA(ps.ord.pro, 'latitude', scale_grad); p1
 p2 <- plot_PCoA(ps.ord.pro, "cruise", scale_color_manual(values = drac))
 p3 <- plot_PCoA(ps.ord.pro, "filter", scale_color_manual(values = c("#FF79C6", "#8BE9FD")))
 
@@ -541,54 +660,10 @@ svg(paste0(fig_dir, "pcoa_16S_filterR.svg"), height = 5, width = 8); p3; dev.off
 
 # EUKARYOTES
 set.seed(1); ps.ord.euk <- ordinate(phy_euk, "PCoA", "bray")
-p1 <- plot_PCoA(ps.ord.euk, 'latitude', scale_grad)
+p1 <- plot_PCoA(ps.ord.euk, 'latitude', scale_grad); p1
 p2 <- plot_PCoA(ps.ord.euk, "cruise", scale_color_manual(values = drac))
 p3 <- plot_PCoA(ps.ord.euk, "filter", scale_color_manual(values = c("#FF79C6", "#8BE9FD")))
 
 svg(paste0(fig_dir, "pcoa_18S_latitudeR.svg"), height = 5, width = 8); p1; dev.off()  
 svg(paste0(fig_dir, "pcoa_18S_cruiseR.svg"), height = 5, width = 8); p2; dev.off() 
 svg(paste0(fig_dir, "pcoa_18S_filterR.svg"), height = 5, width = 8); p3; dev.off()
-
-############################################################################################
-# PERMANOVA 
-############################################################################################
-
-getAdonis2 <- function(g1, g2, g3){
-  g123 <- merge_phyloseq(g1, g2, g3)
-  m <- as(sample_data(g123), "data.frame") 
-  x <- adonis2(distance(g123, method = "bray") ~ year + latitude + filter, data = m) #, strata = m$filter)
-  
-  x <- data.frame(
-    Term = rownames(x),
-    R2 = x$R2 * 100,
-    p_value = x$"Pr(>F)"
-  )
-  
-  p <- ggplot(x[1:nrow(x)-1, ], aes(x = Term, y = R2, fill = Term)) + 
-    geom_bar(stat = "identity") + 
-    geom_text(aes(label = sprintf("p = %.3f", p_value)), 
-              vjust = -0.5, 
-              position = position_dodge(width = 0.9)) +
-    geom_text(aes(label = paste0(sprintf("%.3f", R2), "%")), 
-              vjust = 1.5, 
-              position = position_dodge(width = 0.9), 
-              color = "black") +
-    labs(title = "R2 and p-values from PERMANOVA Analysis",
-         x = "Term",
-         y = "R2 * 100") +
-    theme_cowplot()
-  return(p)
-}
-p <- getAdonis2(
-  readRDS(paste0(dat_dir, "g1_16s_phylo_r90k.RDS")),
-  readRDS(paste0(dat_dir, "g2_16s_phylo_r20k.RDS")),
-  readRDS(paste0(dat_dir, "g3_16s_phylo_r50k.RDS"))
-)
-svg(paste0(fig_dir, "permanova_16s.svg"), height = 5, width = 8); p; dev.off()
-
-p <- getAdonis2(
-  readRDS(paste0(dat_dir, "g1_18s_phylo_r35k.RDS")),
-  readRDS(paste0(dat_dir, "g2_18s_phylo_r10k.RDS")),
-  readRDS(paste0(dat_dir, "g3_18s_phylo_r70k.RDS"))
-)
-svg(paste0(fig_dir, "permanova_18s.svg"), height = 5, width = 8); p; dev.off()

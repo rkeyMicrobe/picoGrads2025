@@ -34,7 +34,8 @@ in_dir <- "data_out/02_qiime2_asv/dataframes/"
 # FIND SAMPLES BORDERING THE TWO FRONTS FOR SPATIAL AMPLICON PLOTS
 ############################################################################################
 
-meta <- read_csv("data_in/meta/g123_meta.csv") 
+meta <- read_csv("data_in/meta/g123_meta.csv") %>% 
+  mutate(sampleID = as.character(sampleID))
 cruise_types <- c("G1", "G2", "G3")
 sal_fronts <- c(32.15, 32.5, 32.45)
 chl_fronts <- c(33, 36.2, 35)
@@ -299,6 +300,61 @@ chl_front <- samp_chl_sm
 fetch_spatials(data1 = euks_surface, data2 = proks_surface, size = size, 
                sal_front = sal_front, chl_front = chl_front)
 
+###########################################################################################
+# SPATIAL MAPPING - HEAT MAP, Latitudes
+############################################################################################
+library(scales)
+euks_surface
+
+minVal = euks_surface %>% filter(filter == 0.2, cruise == "G1") %>%
+  select(latitude) %>% distinct %>% arrange(latitude) %>% 
+  head(1) %>% pull(latitude)
+maxVal = euks_surface %>% filter(filter == 0.2, cruise == "G3") %>%
+  select(latitude) %>% distinct %>% arrange(desc(latitude)) %>% 
+  head(1) %>% pull(latitude)
+
+getLatTiles <- function(data, filterSize, cruiseType, min, max){
+  x <- data %>% 
+    filter(filter ==filterSize, cruise == cruiseType) %>% 
+    group_by(sampleID, filter, latitude, group, depth) %>% 
+    summarise(rpa = sum(rpa))
+  
+  order <- x %>%
+    group_by(sampleID, latitude, filter, group, depth) %>% 
+    reframe(rpa = mean(rpa)) %>% 
+    filter(filter ==  filterSize) %>% 
+    group_by(latitude) %>% 
+    arrange(desc(latitude), desc(depth)) %>% 
+    pull(sampleID) %>% unique
+  
+  plot <- x %>%
+    ungroup() %>%
+    mutate(sampleID = factor(sampleID, levels = rev(order)),
+           xpos = 1) %>%                     # single column
+    ggplot(aes(x = xpos, y = sampleID, fill = latitude)) +
+    geom_tile(width = 1, height = 1) +
+    scale_fill_gradient(
+      low = "grey90", high = "grey30",
+      limits = c(min, max),
+      oob = squish,
+      name = "Latitude (°)"
+    ) +
+    scale_x_continuous(breaks = NULL, labels = NULL) +
+    labs(x = NULL, y = "Sample ID") +
+    theme(axis.ticks.x = element_blank(),
+          panel.grid = element_blank())
+  return(plot)
+}
+p1 <- getLatTiles(data = euks_surface, filterSize = 0.2, cruiseType = "G1", 
+                  min = minVal, max = maxVal)
+p2 <- getLatTiles(data = euks_surface, filterSize = 0.2, cruiseType = "G2", 
+                  min = minVal, max = maxVal)
+p3 <- getLatTiles(data = euks_surface, filterSize = 0.2, cruiseType = "G3",
+                  min = minVal, max = maxVal)
+p = plot_grid(p1, p2, p3, nrow = 1); p
+
+svg(paste0(fig_dir, "heatMap_latitudes.svg"), height = 7, width = 7); p; dev.off()
+
 ############################################################################################
 # SPATIAL MAPPING - LINES/POINTS
 ############################################################################################
@@ -339,7 +395,7 @@ get_plot <- function(data = NULL, gradient = NULL, palette = NULL) {
           axis.title = element_text(size = 18))
 }
 # Eukaryotic phytoplankton
-euk_colors = c("#49C5B1", "#ff8686", "#DAA520", "#8BE9FD", "#44475A")
+euk_colors = c("#66C2A5", "#FC8D62", "#FFD92F", "#8DA0CB", "#44475A")
 p1 <- get_plot(data = euks, gradient = "G1", palette = euk_colors); p1
 p2 <- get_plot(data = euks, gradient = "G2", palette = euk_colors); p2
 p3 <- get_plot(data = euks, gradient = "G3", palette = euk_colors); p3
@@ -349,7 +405,7 @@ svg(paste0(fig_dir, "g123_18S_3_unfrac_lineSpatials_noLegend.svg"), height = 6, 
 #svg(paste0(plot_dir, "g123_18S_3_unfrac_dotSpatials_wLegend.svg"), height = 20, width = 6); print(p); dev.off()
 
 # Prokaryotic phytoplankton
-prok_colors = c("#bd93f9", "#ffb86c", "#44475A")
+prok_colors = c("#E78AC3", "#E5C494", "#44475A")
 p1 <- get_plot(data = proks, gradient = "G1", palette = prok_colors)
 p2 <- get_plot(data = proks, gradient = "G2", palette = prok_colors)
 p3 <- get_plot(data = proks, gradient = "G3", palette = prok_colors)
@@ -433,58 +489,148 @@ fold_changes <- p1$stats %>%
   select(-filter_0.2, -filter_3) %>% 
   pivot_wider(., names_from = region, values_from = fold_change)
 
- ############################################################################################
-# TOTAL RPA FILTER FOLD CHANGE
+############################################################################################
+# PRO/SYN Prokaryote Comparison: SeaFlow vs Amplicon
 ############################################################################################
 
-phytos <- rbind(euks, proks)
+proks <- g123_16s %>% 
+  left_join(., tax, by = "featureID") %>% 
+  select(-group.x) %>% rename(group = group.y, rpa = counts) %>% 
+  drop_na(group) %>% 
+  select(-cruise, -filter) %>% 
+  left_join(., meta, by = "sampleID")
 
-data <- phytos %>% 
-  filter(rpa != 0) %>%
-  group_by(sampleID, group) %>% 
-  reframe(cruise, filter, latitude, region,
-          rpa = sum(rpa)) %>% 
-  distinct %>% ungroup %>%  
-  group_by(cruise, group, filter) %>%
-  summarize(total_rpa = sum(rpa), .groups = 'drop') %>% 
-  mutate(cruise_filter = paste0(cruise, "_", filter),
-         group_filter = paste0(group, "_", filter))
+length(unique(proks$featureID))
 
-order <- c("Archaeplastida", "Dinoflagellata", "Haptophyta", "Stramenopiles", 
-           "Prochlorococcus", "Synechococcus")
-data <- data %>% mutate(group = factor(group, levels = order))
+persistent_ids <- proks %>%
+  group_by(featureID) %>%
+  summarise(n_cruises = n_distinct(cruise), .groups = "drop") %>%
+  filter(n_cruises == 3) %>%        
+  pull(featureID)
 
-# Acquire total rpa for each filter across years
-all_colors <- c("Archaeplastida_0.2" = "#49C5B1", "Archaeplastida_3" = "#317A6A",
-                "Haptophyta_0.2" = "#FFD700", "Haptophyta_3" = "#BFA500",
-                "Dinoflagellata_0.2" = "#DA4949", "Dinoflagellata_3" = "#A83636",
-                "Stramenopiles_0.2" = "#ADECF9", "Stramenopiles_3" = "#7DB2C9",
-                "Prochlorococcus_0.2" = "#7570B3", "Prochlorococcus_3" = "#4D2C7A",
-                "Synechococcus_0.2" = "#ff7f00", "Synechococcus_3" = "#B35900")
+ampliconG3 <- proks %>% tibble %>%
+ # filter(featureID %in% persistent_ids) %>% 
+  filter(#depth <= 15, 
+         cruise == "G3"
+         ) %>%  
+  mutate(latitude = round(latitude, 1)) %>% 
+  group_by(group, latitude, filter) %>%
+  summarise(rpa = mean(rpa, na.rm = TRUE), .groups = "drop")
+minL <- min(ampliconG3$latitude)
+maxL <- max(ampliconG3$latitude)
 
-p <- data %>% 
-  ggplot(., aes(y = cruise_filter, x = total_rpa, fill = group_filter)) +
-  geom_bar(stat = "identity", position = position_dodge(width = 0.8), color = "black") +
-  geom_text(aes(label = sprintf("%.2f", total_rpa)), 
-            position = position_dodge(width = 0.8), 
-            hjust = -0.5, size = 5, color = "black") +
-  facet_wrap(~ group) +
-  xlim(0, 40) +
-  scale_fill_manual(values = all_colors) +
-  theme(
-    axis.text.x = element_text(angle = 0, hjust = .5, size = 15),
-    axis.text.y = element_text(size = 15),
-    axis.title.y = element_blank(),
-    axis.title.x = element_blank(),
-    legend.position = "top",
-    legend.text = element_text(size = 15),
-    strip.background = element_rect(fill = "#282A36"),
-    strip.text = element_text(color = "white", size = 20, face = "bold"),
-  )
+icfb <- read.csv("data_in/seaflow/all_SeaFlow_cruises_v1_5.csv") %>% tibble %>% 
+  filter(cruise == "KM1906") %>% 
+  select(lat, depth, cruise, abundance_prochloro, biomass_prochloro, abundance_synecho, biomass_synecho) %>% 
+  mutate(latitude = round(lat, 1)) %>% 
+  distinct %>% select(-lat) %>% 
+  group_by(latitude) %>%
+  summarise(
+    abd_Pro = mean(abundance_prochloro, na.rm = TRUE),
+    bm_Pro  = mean(biomass_prochloro, na.rm = TRUE),
+    abd_Syn = mean(abundance_synecho, na.rm = TRUE),
+    bm_Syn  = mean(biomass_synecho, na.rm = TRUE),
+    .groups = "drop"
+  ) %>% 
+  filter(latitude >= minL & latitude <= maxL)
+
+# Plots... 
+amp_long <- ampliconG3 %>%
+  filter(group %in% c("Prochlorococcus","Synechococcus")) %>%
+  mutate(group = factor(group, levels = c("Prochlorococcus","Synechococcus")),
+         filter = factor(filter, levels = sort(unique(filter))))
+
+p_ampS <- 
+  amp_long %>% 
+  filter(filter == "0.2") %>% 
+  ggplot(., aes(x = latitude, y = rpa, color = group)) +
+  geom_point(alpha = 0.6, size = 1.6) +
+  geom_line(alpha = 0.8) +
+  scale_color_manual(values = c("#008080", "#4B0082")) +
+  #facet_wrap(~filter, ncol = 1) +
+  theme_cowplot() +
+  theme(legend.position = "none") +
+  labs(x = "Latitude (N)", y = "RPA", subtitle = "Cruise KM1906 --- 0.2um Filter",
+       title = "Amplicon Trends")
+
+
+## --- SeaFlow Biomass for Syn and Pro ---
+icfb_long <- icfb %>%
+  select(-abd_Pro, -abd_Syn) %>% 
+  pivot_longer(cols = c(bm_Pro, bm_Syn),
+               names_to = "metric", values_to = "value") %>%
+  mutate(metric = factor(metric, levels = c("bm_Pro", "bm_Syn"),
+                         labels = c("Prochloro biomass", "Synecho biomass"))
+         )
+
+p_icfb <- ggplot(icfb_long, aes(x = latitude, y = value, color = metric)) +
+  geom_point(alpha = 0.5, size = 1) +
+  geom_line(alpha = 0.8) +
+  scale_color_manual(values = c("#008080", "#4B0082")) +
+  theme_cowplot() +
+  theme(legend.position = "none") +
+  labs(x = "Latitude (N)", y = "Biomass", subtitle = "Cruise KM1906",
+       title = "Biomass Trends")
+
+p <- plot_grid(p_ampS, p_icfb, ncol = 1)
 p
-svg(paste0(fig_dir, "g123_totalRPA_filterCompares.svg"), height = 6, width = 12); p; dev.off()
+svg(paste0(fig_dir, "g3_BioMassCompare_ProSyn.svg"), height = 6, width = 8); p; dev.off()
+
+
+dat <- rbind(
+  icfb_long %>% rename(group = metric) %>% 
+    select(group, latitude, value),
+  amp_long %>% rename(value = rpa) %>% 
+    filter(filter == "0.2") %>% 
+    select(-filter)
+) %>% 
+  pivot_wider(., values_from = value, names_from = group)
+
+library(ggpubr)
+
+fit_pro <- lm(biomass ~ amplicon, data = dat %>% 
+                filter(!is.na(Prochlorococcus), !is.na(`Prochloro biomass`)) %>% 
+                rename(biomass = `Prochloro biomass`, amplicon = Prochlorococcus))
+
+r2_pro <- summary(fit_pro)$r.squared
+pval_pro <- summary(fit_pro)$coefficients[2,4]
 
 
 
 
+p1 <- dat %>% 
+  filter(!is.na(Prochlorococcus), !is.na(`Prochloro biomass`)) %>% 
+  select(latitude, `Prochloro biomass`, Prochlorococcus) %>% 
+  rename(biomass = `Prochloro biomass`, amplicon = Prochlorococcus) %>% 
+  ggplot(aes(x = amplicon, y = biomass)) + 
+  geom_point(alpha = 0.9, size = 3, color = "#008080") + 
+  geom_smooth(method = "lm", se = F, color = "hotpink", linetype = "dashed") + 
+  stat_cor(method = "pearson", label.x = 0.002, label.y = 8, label.sep = ", ") + 
+  labs(
+    x = "RPA",
+    y = "BM",
+    title = "Pro: Biomass vs Amplicon Distributions",
+    subtitle = "0.2uM for amplicons; G3 Cruise"
+  ) +
+  theme_cowplot()
+
+p2 <- dat %>% 
+  filter(!is.na(Synechococcus), !is.na(`Synecho biomass`)) %>% 
+  select(latitude, `Synecho biomass`, Synechococcus) %>% 
+  rename(biomass = `Synecho biomass`, amplicon = Synechococcus) %>% 
+  ggplot(aes(x = amplicon, y = biomass)) + 
+  geom_point(alpha = 0.9, size = 3, color = "#4B0082") + 
+  geom_smooth(method = "lm", se = F, color = "hotpink", linetype = "dashed") + 
+  stat_cor(method = "pearson", label.x = 0.002, label.y = 8, label.sep = ", ") +
+  labs(
+    x = "RPA",
+    y = "BM",
+    title = "Syn: Biomass vs Amplicon Distributions",
+    subtitle = "0.2uM for amplicons; G3 Cruise"
+  ) +
+  theme_cowplot()
+
+p <- plot_grid(p1, p2)
+
+svg(paste0(fig_dir, "g3_BioMassCompare_ProSynXY.svg"), height = 4, width = 10); p; dev.off()
 

@@ -96,14 +96,24 @@ write.csv(intx,  paste0(dat_dir, "Association_Index_allVars.csv"), row.names = F
 
 edge_table <- speic
 wgcna_index <- wgcna
+goodModules <- c("Yellow", "Purple", "Teal")
 
-# Extract positive and negative weights
+x <- edge_table %>% filter(cluster %in% goodModules)
+max(x$weight); min(x$weight); mean(x$weight)
+max(edge_table$weight); min(edge_table$weight); mean(edge_table$weight)
+
+ # Extract positive and negative weights
 pos_edges <- edge_table %>% filter(weight > 0)
 neg_edges <- edge_table %>% filter(weight < 0)
 
+x <- pos_edges %>% filter(cluster %in% goodModules)
+max(x$weight); min(x$weight)
+mean(x$weight)
+
 # Extract Yellow and Purple cluster features, with control
-yellow_features <- wgcna_index %>% filter(cluster == "Yellow") %>% pull(featureID) # n = 23
-purple_features <- wgcna_index %>% filter(cluster == "Purple") %>% pull(featureID) # n = 19
+yellow_features <- wgcna_index %>% filter(cluster == "Yellow") %>% pull(featureID) # n = 28
+purple_features <- wgcna_index %>% filter(cluster == "Purple") %>% pull(featureID) # n = 27
+teal_features <- wgcna_index %>% filter(cluster == "Teal") %>% pull(featureID) # n = 4
 control_feature <- wgcna_index %>% filter(featureID == "180a15328cf14383e0992ad4552cb976") %>% pull(featureID) 
 selected_features <- unique(c(yellow_features, purple_features, control_feature))
 
@@ -117,7 +127,7 @@ candidate_index <- edge_table %>%
   select(-domain) %>% 
   rename(C_Group = specific)
 candidateIDs <- selected_features
-Y_Ps <-  unique(c(yellow_features, purple_features))
+Y_Ps <-  unique(c(yellow_features, purple_features, teal_features))
 
 # Create a SpiecEasi-derived index for neighbors (associates) based on candidate IDs
 associate_index <- edge_table %>% 
@@ -152,6 +162,16 @@ edgeTable_clean <- edge_table %>%
 #------------------------------------------------------------------------------
 # PLOT OUT DISTRIBUTION OF POS/NEG WEIGHTS FOR CANDIDATES
 temp <- edgeTable_clean %>% filter(associate %in% overlapIDs)
+
+# All Ranges
+max(temp$weight); min(temp$weight); mean(temp$weight)
+# Positive Ranges
+x <- temp %>% filter(weight > 0)
+max(x$weight); min(x$weight); mean(x$weight)
+# Negative Ranges
+x <- temp %>% filter(weight < 0)
+max(x$weight); min(x$weight); mean(x$weight)
+
 divider = 0
 p <- ggplot(temp, aes(x = weight, fill = weight >= divider)) +
   geom_histogram(binwidth = 0.01, color = "black") +
@@ -162,7 +182,7 @@ p
 svg(paste0(fig_dir, "Y-P_candidates_neighbor_weightDistributions.svg"), height = 3, width = 6); p; dev.off()
 
 # Ranges
-temp %>% filter(cluster %in% c("Yellow", "Purple")) %>% 
+temp %>% filter(cluster %in% c("Yellow", "Purple", 'Teal')) %>% 
   summarise(
     min_weight = min(weight, na.rm = TRUE),
     max_weight = max(weight, na.rm = TRUE),
@@ -182,8 +202,8 @@ temp <- edgeTable_clean %>% filter(associate %in% all_YP_associates) %>%
   reframe(total_neighbors = n())
 unique(temp$cluster)
 
-cluster_order <- rev(c("No Assignment", "Red", "Cyan", "Blue", "Orange",  
-                       "Brown", "Gray", "Black",  "Clay", "Purple",  "Yellow"))
+cluster_order <- rev(c("No Assignment", "Sky", "Red", "Blue","Orange", "Black", 
+                       "Gray",  "Pink", "Purple", "Teal", "Yellow"))
 
 p <- ggplot(temp, 
             aes(y = factor(cluster, levels = cluster_order), 
@@ -293,23 +313,23 @@ flex_table <- relationshipTable %>% arrange(CandidateCluster, Candidate_taxonomy
   bg(i = ~ AssociateDomain == "Prok", bg = "#D9D9D9", part = "body"
      ) %>%
   # Candidate Colors
-  bg(i = ~ CandidateCluster == "Yellow", j = 1, bg = "#FFED6F", part = "body") %>%
-  bg(i = ~ CandidateCluster == "Cyan", j = 1, bg = "turquoise", part = "body") %>%
-  bg(i = ~ CandidateCluster == "Purple", j = 1, bg = "#BC80BD", part = "body") %>%
+  bg(i = ~ CandidateCluster == "Yellow", j = 1, bg = "#FFD92F", part = "body") %>%
+  bg(i = ~ CandidateCluster == "Sky", j = 1, bg = "#A6CEE3", part = "body") %>%
+  bg(i = ~ CandidateCluster == "Purple", j = 1, bg = "#7570B3", part = "body") %>%
   # Associate Colors
-  bg(i = ~ AssociateCluster == "Yellow", j = 5, bg = "#FFED6F", part = "body") %>%
-  bg(i = ~ AssociateCluster == "Cyan", j = 5, bg = "turquoise", part = "body") %>%
-  bg(i = ~ AssociateCluster == "Purple", j = 5, bg = "#BC80BD", part = "body") %>%
-  bg(i = ~ AssociateCluster == "Clay", j = 5, bg = "#FF9E8A", part = "body") %>%
-  bg(i = ~ AssociateCluster == "Black", j = 5, bg = "black", part = "body") %>%
-  color(i = ~ AssociateCluster == "Black", j = 5, color = "white", part = "body") %>% 
-  bg(i = ~ AssociateCluster == "Brown", j = 5, bg = "brown", part = "body") %>%
-  color(i = ~ AssociateCluster == "Brown", j = 5, color = "white", part = "body") %>% 
+  bg(i = ~ AssociateCluster == "Yellow", j = 5, bg = "#FFD92F", part = "body") %>%
+  bg(i = ~ AssociateCluster == "Sky", j = 5, bg = "#A6CEE3", part = "body") %>%
+  bg(i = ~ AssociateCluster == "Purple", j = 5, bg = "#7570B3", part = "body") %>%
+  bg(i = ~ AssociateCluster == "Teal", j = 5, bg = "#66C2A5", part = "body") %>%
+  
+  bg(i = ~ AssociateCluster == "Pink", j = 5, bg = "#E78AC3", part = "body") %>%
+  color(i = ~ AssociateCluster == "Pink", j = 5, color = "black", part = "body") %>% 
+  bg(i = ~ AssociateCluster == "Gray", j = 5, bg = "#B3B3B3", part = "body") %>%
+  color(i = ~ AssociateCluster == "Gray", j = 5, color = "black", part = "body") %>% 
   color(part = "header", color = "black") %>% 
   autofit()
 
 flex_table
-
 
  save_as_image(
   flex_table, 

@@ -266,6 +266,9 @@ df <- bind_rows(g1_status, g2_status, g3_status) %>%
   group_by(specific, status, cruise) %>% 
   reframe(total_rpa = sum(total_RPA))
 
+# -------------------------------
+# -------------------------------
+
 # Plot RPA
 p2 <- ggplot(df, aes(y = factor(specific, levels = rev(ordered)), x = total_rpa, fill = status)) +
   geom_bar(position = "stack", stat = "identity", color = "black", width = 0.75) +
@@ -306,8 +309,12 @@ for (i in 1:nrow(df2)) {
 }
 ggsave(paste(tab_dir, "g123_PE_RPA_df.png"), table_plot_rpa, width = 10.5, height = 2, dpi = 300)
 
+# -------------------------------
+# -------------------------------
+
 # Combine and Save Both Plots
 p <- plot_grid(p1, p2, nrow = 1)
+p
 svg(paste0(fig_dir, "/g123_PE_Cruise.svg"), height = 7, width = 10); p; dev.off()
 
 # Save persistent vs ephemeral statuses
@@ -316,175 +323,6 @@ status_meta <- rbind(fetchCategories(data = g1_phytos, survey = "G1"),
                      fetchCategories(data = g3_phytos, survey = "G3")) %>% 
   select(featureID, status) %>% distinct
 write.csv(status_meta, paste0(dat_dir, "g123_persistents_asvMeta.csv"), row.names = F)
-
-############################################################################################
-# PERSISTENT VS EPHEMERAL AMPLICONS -- Region Amplicon Compositions
-############################################################################################
-
-meta <- read.csv("data_in/meta/g123_meta.csv") %>% tibble %>% 
-  select(sampleID, latitude, region) %>% 
-  mutate(sampleID = as.character(sampleID))
-status <- status_meta
-
-# Function to Add Metadata and Filter by Cruise
-mergeAndFilter <- function(data, cruise_label) {
-  data %>%
-    merge(., meta, by = "sampleID") %>%
-    filter(cruise == cruise_label)
-}
-
-# Merging Metadata and Filtering for Cruises (Eukaryotes and Prokaryotes)
-g_phytos <- list(
-  euks = list(
-    G1 = mergeAndFilter(euks, "G1"),
-    G2 = mergeAndFilter(euks, "G2"),
-    G3 = mergeAndFilter(euks, "G3")
-  ),
-  proks = list(
-    G1 = mergeAndFilter(proks, "G1"),
-    G2 = mergeAndFilter(proks, "G2"),
-    G3 = mergeAndFilter(proks, "G3")
-  )
-)
-# Persistent IDs for Prokaryotes
-filtered_list_proks <- lapply(g_phytos$proks, function(x) unique(x$featureID))
-persistent_ids_p <- Reduce(intersect, filtered_list_proks)
-
-# Subset Data Function
-fetchSubset <- function(data) {
-  data %>%
-    select(cruise, latitude, filter, sampleID, region, group, rpa, featureID) %>%
-    drop_na(group) %>%
-    filter(rpa != 0)
-}
-
-# Bind All Cruise Data and Classify Persistent and Ephemeral (Eukaryotes & Prokaryotes)
-g123_data <- function(data_list, persistent_ids) {
-  bind_rows(lapply(data_list, fetchSubset)) %>%
-    mutate(
-      status = ifelse(featureID %in% persistent_ids, "Persistent", "Ephemeral")
-    ) %>%
-    filter(filter == "0.2")
-}
-g123_e <- g123_data(g_phytos$euks, persistent_ids)
-g123_p <- g123_data(g_phytos$proks, persistent_ids_p)
-
-# Classify Oceanic Regions Based on Latitude
-fetchTile <- function(data, group_list) {
-  # Fronts Information
-  fronts <- tibble(
-    cruise = c("G1", "G2", "G3"),
-    sal_front = c(32.15, 32.5, 32.45),
-    chl_front = c(33, 36.2, 35)
-  )
-  
-  # Join with Fronts and Classify Regions
-  data <- data %>%
-    left_join(fronts, by = "cruise") %>%
-    mutate(
-      region = case_when(
-        latitude < sal_front ~ "NPSG",
-        latitude >= sal_front & latitude <= chl_front ~ "STZ",
-        latitude > chl_front ~ "NTZ"
-      )
-    ) %>%
-    select(-sal_front, -chl_front)
-  
-  # Summarize RPA Data
-  rpa_percentage <- data %>%
-    group_by(region, cruise, status) %>%
-    mutate(total_rpa_region = sum(rpa, na.rm = TRUE)) %>% # Total RPA per region
-    group_by(group, region, cruise, status) %>%
-    reframe(
-      total_rpa = sum(rpa, na.rm = TRUE),
-      percentage_rpa = total_rpa / total_rpa_region * 100
-    )
-  
-  # Plotting
-  ggplot(rpa_percentage, aes(x = region, y = factor(group, levels = group_list), fill = percentage_rpa)) +
-    geom_tile(color = "black") +
-    geom_text(aes(label = round(percentage_rpa, 1)), size = 4, color = "white") +
-    facet_grid(status ~ cruise) +
-    scale_fill_viridis_c(option = "D", direction = 1) +
-    labs(
-      title = "Percentage of Total RPA by Kingdom, Region, and Cruise",
-      subtitle = "Filter Size = 0.2uM",
-      fill = "RPA Percentage"
-    ) +
-    theme(
-      axis.text.x = element_text(angle = 45, hjust = 1),
-      axis.title.x = element_blank(),
-      axis.title.y = element_blank(),
-      legend.position = "bottom",
-      legend.title = element_text(size = 14),
-      legend.text = element_text(size = 14, angle = 90, hjust = 1, vjust = 0.5),
-      strip.background = element_rect(fill = "#282A36"),
-      strip.text = element_text(color = "white", size = 15, face = "bold"),
-      plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
-      plot.subtitle = element_text(size = 16)
-    )
-}
-tile_18S <- fetchTile(data = g123_e, group_list = c("Haptophyta", "Stramenopiles", "Archaeplastida", "Dinoflagellata"))
-svg(paste0(fig_dir, "/g123_18S_PE_Region.svg"), height = 6, width = 8); tile_18S; dev.off()
-
-tile_16S <- fetchTile(data = g123_p, group_list = c("Synechococcus", "Prochlorococcus", "Other Taxa"))
-svg(paste0(fig_dir, "/g123_16S_PE_Region.svg"), height = 6, width = 8); tile_16S; dev.off()
-
-## Dominants
-x <- g123_e %>% 
-  filter(filter == "0.2", status == "Persistent",
-         group == "Archaeplastida") %>% 
-  group_by(featureID, group) %>% 
-  reframe(rpa = sum(rpa)) %>% 
-  arrange(desc(rpa)) %>% 
-  left_join(., tax_18s, by = "featureID")
-
-############################################################################################
-# PERSISTENT VS EPHEMERAL AMPLICONS -- Regional Proportions
-############################################################################################
-
-x <- phytos %>% 
-  left_join(., meta, by = "sampleID") %>% 
-  left_join(., status, by = "featureID") %>% 
-  filter(filter == "0.2") %>% 
-  group_by(cruise, region, status, group) %>% 
-  reframe(rpa = sum(rpa))
-
-get_Regional_Donuts <- function(data = x, gradient = NULL){
-  donut_data <- x %>%
-    filter(cruise == gradient) %>% 
-    group_by(region, group, status) %>%
-    summarise(total_rpa = sum(rpa), .groups = 'drop') %>%
-    group_by(region, group) %>%
-    mutate(status, 
-           percentage = total_rpa / sum(total_rpa) * 100,
-           total_rpa_region = sum(total_rpa)) %>%
-    ungroup() %>% 
-    mutate(region = factor(region, levels = c("NTZ", "STZ", "NPSG")))
-  
-  p <- ggplot(donut_data, aes(x = 2, y = percentage, fill = status)) +
-    geom_bar(stat = "identity", color = "black", width = 1) +
-    coord_polar(theta = "y", start = 0) +
-    facet_wrap(~ region + group, ncol = 6) +
-    xlim(0.5, 2.5) +  # Adjust to create space in the center
-    geom_text(aes(label = round(total_rpa_region, 1), x = 0.5), 
-              position = position_stack(vjust = 0.5), color = "black", size = 4) +
-    labs(title = paste0("Persistent and Ephemeral RPA: ", gradient), fill = "Status") +
-    scale_fill_manual(values = c("#6272A4", "#8BE9FD")) +  
-    theme_void() +
-    theme(legend.position = "top",
-          legend.title = element_blank(),
-          plot.title = element_text(hjust = 0.5, size = 14),
-          strip.background = element_rect(fill = "#44475A"),
-          strip.text = element_text(color = "white", face = "bold"))
-  return(p)
-}
-p <- get_Regional_Donuts(data = x, gradient = "G1")
-svg(paste0(fig_dir, "g1_PE_Region_Donut.svg"), height = 6, width = 8); p; dev.off()
-p <- get_Regional_Donuts(data = x, gradient = "G2")
-svg(paste0(fig_dir, "g2_PE_Region_Donut.svg"), height = 6, width = 8); p; dev.off()
-p <- get_Regional_Donuts(data = x, gradient = "G3")
-svg(paste0(fig_dir, "g3_PE_Region_Donut.svg"), height = 6, width = 8); p; dev.off()
 
 ############################################################################################
 # MANTEL ANALYSIS
@@ -569,14 +407,7 @@ p <- pivot_longer(distance_df, cols = c(Ephemeral, Persistent),
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 15),
         plot.subtitle = element_text(size = 16))
-
-p <- pivot_longer(distance_df, cols = c(Ephemeral, Persistent), 
-                  names_to = "Comparison", values_to = "Distance") %>% 
-  filter(Comparison == "Persistent")
-mean(p$Distance)
-max(p$Distance)
-min(p$Distance)
-median(p$Distance)
+p
 
 p <- pivot_longer(distance_df, cols = c(Ephemeral, Persistent), 
                   names_to = "Comparison", values_to = "Distance") %>% 

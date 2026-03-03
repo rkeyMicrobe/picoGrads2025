@@ -36,8 +36,17 @@ tab_dir = "data_out/04_community/tables/"
 # LOAD IN DATAFRAMES
 ############################################################################################
 
-meta <- read_csv("data_in/meta/g123_meta.csv") 
+meta <- read_csv("data_in/meta/g123_meta_bio_times.csv") %>% 
+  rename(latitude = lat)
 in_dir <- "data_out/02_qiime2_asv/dataframes/"
+
+meta %>%
+  group_by(cruise) %>%
+  summarise(
+    min_lat = min(latitude, na.rm = TRUE),
+    max_lat = max(latitude, na.rm = TRUE),
+    .groups = "drop"
+  )
 
 # Fetch 18s counts
 getData <- function(file = NULL){
@@ -51,7 +60,7 @@ getData <- function(file = NULL){
 g123_18s <- rbind(getData(file = paste0(in_dir, "g1_18s_master_0-200m.feather")),
                   getData(file = paste0(in_dir, "g2_18s_master_0-200m.feather")),
                   getData(file = paste0(in_dir, "g3_18s_master_0-200m.feather"))
-                  )
+)
 
 # Fetch 18s taxonomies
 getTaxonomy <- function(file = NULL) {
@@ -120,7 +129,7 @@ tax_16s <- rbind(
 tax <- tax_16s %>% select(featureID, group)
 proks <- g123_16s %>% 
   left_join(., tax, by = "featureID") %>% 
-  select(-group.x) %>% 
+  dplyr::select(-group.x) %>% 
   rename(group = group.y, rpa = counts)
 
 #-------------------------------------------------------------------------------
@@ -212,9 +221,9 @@ getPlotStats <- function(data = NULL, smpMeta = NULL, gradient = NULL){
   
   return(list(plot = plot, stats = boxplot_stats))
 }
-p1 <- getPlotStats(data = euks, smpMeta = meta, gradient = "G1")
-p2 <- getPlotStats(data = euks, smpMeta = meta, gradient = "G2")
-p3 <- getPlotStats(data = euks, smpMeta = meta, gradient = "G3")
+p1 <- getPlotStats(data = euks, smpMeta = meta, gradient = "G1"); p1
+p2 <- getPlotStats(data = euks, smpMeta = meta, gradient = "G2"); p2
+p3 <- getPlotStats(data = euks, smpMeta = meta, gradient = "G3"); p3
 
 
 p <- plot_grid(p1$plot, p2$plot, p3$plot, nrow = 1); p
@@ -367,7 +376,7 @@ highs <- setdiff(all, lows)
 data <- data %>% 
   mutate(group_unaltered = group,
          group = if_else(group %in% highs, group, "Other"))
-euks_archive <- data %>% select(-group_unaltered)
+euks_archive <- data %>% dplyr::select(-group_unaltered)
 
 # Function to get sample order based on latitude
 getOrder <- function(data, gradient, size) {
@@ -409,9 +418,9 @@ euk_colors <- c(
   "Unknown Eukaryote" = "#FFB6C1"
 )
 # Generate spatial plots for eukaryote datasets
-p1 <- getMerge(df = euks_archive, cruise_type = "G1", colors = euk_colors)
-p2 <- getMerge(df = euks_archive, cruise_type = "G2", colors = euk_colors)
-p3 <- getMerge(df = euks_archive, cruise_type = "G3", colors = euk_colors)
+p1 <- getMerge(df = euks_archive, cruise_type = "G1", colors = euk_colors);p1
+p2 <- getMerge(df = euks_archive, cruise_type = "G2", colors = euk_colors);p2
+p3 <- getMerge(df = euks_archive, cruise_type = "G3", colors = euk_colors);p3
 
 svg(paste0(fig_dir, "G1_euks_totalRPA.svg"), height = 8, width = 15); p1; dev.off()
 svg(paste0(fig_dir, "G2_euks_totalRPA.svg"), height = 8, width = 15); p2; dev.off()
@@ -436,14 +445,14 @@ highs <- setdiff(all, lows)
 data <- data %>% 
   mutate(group_unaltered = group,
          group = if_else(group %in% highs, group, "Other"))
-proks_archive <- data %>% select(-group_unaltered)
+proks_archive <- data %>% dplyr::select(-group_unaltered)
 
 # Functions to generate ggplot of total group RPA across years
 getPlot <- function(data, size, gradient, smp_order, colors){
   x_noChloroplast <- data %>% 
     filter(filter == size & cruise == gradient) %>%
     filter(sampleID %in% smp_order) %>% 
-    select(-featureID, -filter, -cruise)
+    dplyr::select(-featureID, -filter, -cruise)
   
   x_Chloroplast <- data %>%
     group_by(sampleID) %>%
@@ -453,7 +462,7 @@ getPlot <- function(data, size, gradient, smp_order, colors){
            rpa = missing_rpa,
            total_rpa = missing_rpa * 100,
            domain = "prokaryote") %>% 
-    select(sampleID, rpa, domain, group)
+    dplyr::select(sampleID, rpa, domain, group)
   rbind(x_noChloroplast, x_Chloroplast) %>% 
     filter(sampleID %in% smp_order) %>% 
     mutate(group = factor(group, levels = names(colors))) %>% 
@@ -483,255 +492,13 @@ prok_colors <- c(
 )
 
 # GENERATE SPATIAL PLOTS FOR PROKARYOTE DATASETS
-p1 <- getMerge(df = proks_archive, cruise_type = "G1", colors = prok_colors)
-p2 <- getMerge(df = proks_archive, cruise_type = "G2", colors = prok_colors)
-p3 <- getMerge(df = proks_archive, cruise_type = "G3", colors = prok_colors)
+p1 <- getMerge(df = proks_archive, cruise_type = "G1", colors = prok_colors);p1
+p2 <- getMerge(df = proks_archive, cruise_type = "G2", colors = prok_colors);p2
+p3 <- getMerge(df = proks_archive, cruise_type = "G3", colors = prok_colors);p3
 
 svg(paste0(fig_dir, "G1_prok_totalRPA.svg"), height = 8, width = 15); p1; dev.off()
 svg(paste0(fig_dir, "G2_prok_totalRPA.svg"), height = 8, width = 15); p2; dev.off()
 svg(paste0(fig_dir, "G3_prok_totalRPA.svg"), height = 8, width = 15); p3; dev.off()
-
-############################################################################################
-# NON-METRIC MULTIDIMENSIONAL SCALING
-############################################################################################
-
-euks <- euks_archive
-proks <- proks_archive
-
-data = euks
-gradient = "G3"
-getNMDS <- function(data = NULL, gradient = NULL, plot_title = NULL){
-  temp <- meta %>% mutate(sampleID = as.character(sampleID)) %>% 
-    select(sampleID, depth)
-  x <- data %>%
-    filter(cruise == gradient) %>%
-    group_by(sampleID, group, filter) %>%
-    summarise(total_rpa = sum(rpa)) %>%
-    pivot_wider(names_from = group, values_from = total_rpa, values_fill = list(total_rpa = 0)) %>% 
-    left_join(., temp, by = "sampleID") %>% 
-    relocate(depth, .before = filter)
-  mat <- x[, -c(1:3)]
-  set.seed(123)
-  nmds <- metaMDS(mat, distance = "bray", k = 2, trymax = 100)
-  nmds_sites <- as.data.frame(scores(nmds)$sites)
-  nmds_sites$sampleID <- x$sampleID 
-  
-  data <- nmds_sites %>% 
-    merge(., meta %>% select(sampleID, region, filter, depth), by = "sampleID") %>% 
-    relocate(., c("region", "filter", "depth"), .after = sampleID)
-  
-  correlations <- as.data.frame(cor(x[,-(1:3)], nmds_sites[,1:2]))
-  colnames(correlations) <- c("NMDS1", "NMDS2")
-  stress_value <- round(nmds$stress, 4)
-  
-  ggplot(data, aes(x = NMDS1, y = NMDS2, color = region)) +
-    geom_point(aes(shape = as.character(filter)), size = 4.5, color = "black") +
-    geom_point(aes(shape = as.character(filter)), size = 3) +
-    scale_color_manual(values = c("#FF79C6", "#8BE9FD", "#FFD700")) +
-    geom_segment(data = correlations, aes(x = 0, y = 0, xend = NMDS1, yend = NMDS2),
-                 arrow = arrow(length = unit(.35, "cm")), 
-                 color = "black") +
-    geom_text(data = correlations, aes(x = NMDS1, y = NMDS2, label = rownames(correlations)),
-              color = "black", size = 3, hjust = "inward", vjust = "inward") + 
-    labs(x = "NMDS1", y = "NMDS2", title = plot_title) + 
-    annotate("text", x = Inf, y = -Inf, label = paste("Stress =", stress_value), 
-             hjust = 1.1, vjust = -0.5, size = 5, color = "black") +
-    theme(legend.position = "top")
-}
-# Generate NMDS plots for cruises
-nmds_plot_list <- list()
-for (cruise_type in c("G1", "G2", "G3")) {
-  p <- plot_grid(
-    getNMDS(data = proks, gradient = cruise_type, plot_title = "Prokaryote"),
-    getNMDS(data = euks, gradient = cruise_type, plot_title = "Eukaryotes"),
-    nrow = 1
-  )
-  nmds_plot_list[[cruise_type]] <- p
-}
-
-svg(file = paste0(fig_dir, "G1_NMDS.svg"), height = 5, width = 12)
-print(nmds_plot_list[["G1"]])
-dev.off()
-
-svg(file = paste0(fig_dir, "G1_NMDS.svg"), height = 5, width = 12)
-print(nmds_plot_list[["G2"]])
-dev.off()
-
-svg(file = paste0(fig_dir, "G1_NMDS.svg"), height = 5, width = 12)
-print(nmds_plot_list[["G3"]])
-dev.off()
-
-
-############################################################################################
-# ENVFIT ANALYSIS
-############################################################################################
-
-# Function for Factor Contributions
-getEnvFit_factors <- function(data = NULL, meta = NULL, survey = NULL){
-  df <- data %>% filter(cruise == survey)
-  meta_g1 <- meta %>% filter(cruise == survey)
-  smps1 <- unique(df$sampleID)
-  smps2 <- unique(meta_g1$sampleID)
-  smps <- intersect(smps1, smps2)
-  meta_g1 <- meta_g1 %>% filter(sampleID %in% smps) %>% 
-    mutate(sampleID = factor(sampleID, levels = smps)) %>% 
-    arrange(sampleID)
-  temp <- meta_g1 %>% select(sampleID, depth)
-  df <- df %>% filter(sampleID %in% smps) %>%
-    left_join(., temp, by = "sampleID") %>% 
-    mutate(sampleID = factor(sampleID, levels = smps)) %>% 
-    arrange(sampleID)
-  com1 <- df %>% select(sampleID, featureID, rpa) %>%
-    spread(featureID, rpa, fill = 0)
-  com_matrix <- as.matrix(com1 %>% select(-sampleID))
-  rownames(com_matrix) <- com1$sampleID
-  bc <- vegdist(com_matrix, method = "bray")
-  nmds_results <- metaMDS(bc, k = 2, trymax = 500)
-  meta_g1$filter <- as.factor(meta_g1$filter)
-  meta_g1$depth <- as.factor(meta_g1$depth)
-  envfit_meta <- envfit(nmds_results, meta_g1[, c("filter", "region", "depth")], permutations = 999)
-  p <- envfit_meta
-  return(p)
-}
-
-data = 
-# Function for Taxa Contributions
-getEnvFit_taxa <- function(data = NULL, meta = NULL, survey = NULL){
-  df <- data %>% filter(cruise == survey)
-  meta_g1 <- meta %>% filter(cruise == survey)
-  smps1 <- unique(df$sampleID)
-  smps2 <- unique(meta_g1$sampleID)
-  smps <- intersect(smps1, smps2)
-  meta_g1 <- meta_g1 %>% filter(sampleID %in% smps) %>% 
-    mutate(sampleID = factor(sampleID, levels = smps)) %>% 
-    arrange(sampleID)
-  df <- df %>% filter(sampleID %in% smps) %>% 
-    mutate(sampleID = factor(sampleID, levels = smps)) %>% 
-    arrange(sampleID)
-  com1 <- df %>% select(sampleID, featureID, rpa) %>%
-    spread(featureID, rpa, fill = 0)
-  group_means <- com1 %>%
-    pivot_longer(., cols = -sampleID, names_to = "featureID", values_to = "rpa") %>% distinct %>% 
-    left_join(df %>% select(featureID, group), by = "featureID") %>% distinct %>% 
-    group_by(sampleID, group) %>%
-    summarise(mean_rpa = mean(rpa, na.rm = TRUE)) %>%
-    spread(group, mean_rpa, fill = 0) %>%
-    as.matrix()
-  com_matrix <- as.matrix(com1 %>% select(-sampleID))
-  rownames(com_matrix) <- com1$sampleID
-  bc <- vegdist(com_matrix, method = "bray")
-  nmds_results <- metaMDS(bc, k = 2, trymax = 100)
-  envfit_group <- envfit(nmds_results, group_means, permutations = 999)
-  p <- envfit_group
-  return(p)
-}
-# Function to make a table
-create_summary_table <- function(g1, g2, g3) {
-  g1_summary <- data.frame(
-    Survey = "G1",
-    Factor = c("Filter", "Region", "Depth"),
-    r2 = c(g1$fit$factors$r[1], g1$fit$factors$r[2], g1$fit$factors$r[3]),
-    p_value = c(g1$fit$factors$pvals[1], g1$fit$factors$pvals[2], g1$fit$factors$pvals[3])
-  )
-  g2_summary <- data.frame(
-    Survey = "G2",
-    Factor = c("Filter", "Region", "Depth"),
-    r2 = c(g2$fit$factors$r[1], g2$fit$factors$r[2], g2$fit$factors$r[3]),
-    p_value = c(g2$fit$factors$pvals[1], g2$fit$factors$pvals[2], g1$fit$factors$pvals[3])
-  )
-  g3_summary <- data.frame(
-    Survey = "G3",
-    Factor = c("Filter", "Region", "Depth"),
-    r2 = c(g3$fit$factors$r[1], g3$fit$factors$r[2], g3$fit$factors$r[3]),
-    p_value = c(g3$fit$factors$pvals[1], g3$fit$factors$pvals[2], g1$fit$factors$pvals[3])
-  )
-  summary_table <- rbind(g1_summary, g2_summary, g3_summary)
-  return(summary_table)
-}
-# Function to color the table
-color_table_rows <- function(table_plot, table, survey_colors) {
-  for (i in 1:nrow(table)) {
-    table_plot <- table_cell_bg(
-      table_plot, row = i + 1, column = 1, # row = i + 1 to account for the header row
-      fill = survey_colors[table$Survey[i]],
-      color = "white"
-    )
-  }
-  return(table_plot)
-}
-
-#-------------------------------------------------------------------------------
-# Eukaryotes
-g1 <- getEnvFit_factors(data = euks, meta = meta, survey = "G1")
-g2 <- getEnvFit_factors(data = euks, meta = meta, survey = "G2")
-g3 <- getEnvFit_factors(data = euks, meta = meta, survey = "G3")
-table <- data.frame(
-  Survey = c("G1", "G1", "G1", "G2", "G2", "G2", "G3", "G3", "G3"),
-  Factor = c("Filter", "Region", "Depth", "Filter", "Region", "Depth", "Filter", "Region", "Depth"),
-  r2 = c(0.2823, 0.4678, 0.0712, 0.1684, 0.3832, 0.0800, 0.3723, 0.4042, 0.1324),
-  p_value = c(0.001, 0.001, 0.843, 0.001, 0.001, 0.007, 0.001, 0.001, 0.001)
-)
-survey_colors <- c("G1" = "#50FA7B", "G2" = "#FFB86C", "G3" = "#BD93F9")
-table_plot <- ggtexttable(table, rows = NULL, theme = ttheme("classic"))
-table_plot <- color_table_rows(table_plot, table, survey_colors)
-ggsave(paste0(tab_dir, "envFit_factors.png"), table_plot, width = 5, height = 3, dpi = 300)
-
-g1 <- getEnvFit_taxa(data = euks, meta = meta, survey = "G1")
-g2 <- getEnvFit_taxa(data = euks, meta = meta, survey = "G2")
-g3 <- getEnvFit_taxa(data = euks, meta = meta, survey = "G3")
-table <- data.frame(
-  Survey = rep(c("G1", "G2", "G3"), each = 9),
-  Taxa = rep(c("Alveolata", "Archaeplastida", "Haptophyta", "Opisthokonta", "Other", "Rhizaria", "Stramenopiles", "Unknown Eukaryote", "sampleID"), times = 3),
-  r2 = c(0.7638, 0.3428, 0.3312, 0.8372, 0.2943, 0.1834, 0.5232, 0.2900, 0.1392, # G1
-         0.2596, 0.7301, 0.2257, 0.5000, 0.0154, 0.3012, 0.0709, 0.2856, 0.0318, # G2
-         0.7113, 0.5673, 0.3922, 0.7304, 0.1602, 0.1035, 0.6061, 0.1947, 0.4940), # G3
-  p_value = c(0.001, 0.001, 0.001, 0.001, 0.004, 0.019, 0.001, 0.004, 0.083,   # G1
-              0.001, 0.001, 0.001, 0.001, 0.646, 0.001, 0.100, 0.001, 0.380,  # G2
-              0.001, 0.001, 0.001, 0.001, 0.001, 0.003, 0.001, 0.001, 0.001)  # G3
-) %>% 
-  filter(Taxa != "sampleID")
-
-table_plot <- ggtexttable(table, rows = NULL, theme = ttheme("classic"))
-table_plot <- color_table_rows(table_plot, table, survey_colors)
-ggsave(paste0(tab_dir, "envFit_taxa.png"), table_plot, width = 5, height = 7, dpi = 300)
-
-#-------------------------------------------------------------------------------
-# Prokaryotes
-
-proks <- proks_archive
-
-g1 <- getEnvFit_factors(data = proks, meta = meta, survey = "G1")
-g2 <- getEnvFit_factors(data = proks, meta = meta, survey = "G2")
-g3 <- getEnvFit_factors(data = proks, meta = meta, survey = "G3")
-table <- data.frame(
-  Survey = c("G1", "G1", "G1", "G2", "G2", "G2", "G3", "G3", "G3"),
-  Factor = c("Filter", "Region", "Depth", "Filter", "Region", "Depth", "Filter", "Region", "Depth"),
-  r2 = c(0.1235, 0.5019, 0.4137, 0.0406, 0.7589, 0.0038, 0.0936, 0.4639, 0.1808),
-  p_value = c(0.009, 0.001, 0.033, 0.098, 0.001, 0.767, 0.001, 0.001, 0.001)
-)
-table_plot <- ggtexttable(table, rows = NULL, theme = ttheme("classic"))
-table_plot <- color_table_rows(table_plot, table, survey_colors)
-ggsave(paste0(tab_dir, "envFit_factors_proks.png"), table_plot, width = 5, height = 3, dpi = 300)
-
-g1 <- getEnvFit_taxa(data = proks, meta = meta, survey = "G1")
-g2 <- getEnvFit_taxa(data = proks, meta = meta, survey = "G2")
-g3 <- getEnvFit_taxa(data = proks, meta = meta, survey = "G3")
-table <- data.frame(
-  Survey = rep(c("G1", "G2", "G3"), each = 11),
-  Taxa = rep(c("sampleID", "Actinobacteriota", "Archaea", "Bacteroidota", "Other", "Planctomycetota", 
-               "Prochlorococcus", "Proteobacteria", "SAR406", "Synechococcus", "Verrucomicrobiota"), times = 3),
-  r2 = c(0.1688, 0.4017, 0.0100, 0.3729, 0.3214, 0.3689, 0.5345, 0.4819, 0.4289, 0.4469, 0.6447,  
-         0.0104, 0.4473, 0.3344, 0.4571, 0.0675, 0.3859, 0.5557, 0.2218, 0.2987, 0.4298, 0.1903,  
-         0.5240, 0.0316, 0.1512, 0.2533, 0.3419, 0.1436, 0.2730, 0.1258, 0.0804, 0.2287, 0.1074), 
-  p_value = c(0.059, 0.001, 0.840, 0.002, 0.005, 0.001, 0.001, 0.002, 0.001, 0.001, 0.001,
-              0.737, 0.001, 0.001, 0.001, 0.121, 0.001, 0.001, 0.001, 0.001, 0.001, 0.003,
-              0.001, 0.176, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.005, 0.001, 0.007)
-) %>% 
-  filter(Taxa != "sampleID")
-table_plot <- ggtexttable(table, rows = NULL, theme = ttheme("classic"))
-table_plot <- color_table_rows(table_plot, table, survey_colors)
-ggsave(paste0(tab_dir, "envFit_taxa_proks.png"), table_plot, width = 5, height = 9, dpi = 300)
-
 
 ############################################################################################
 # ALPHA DIVERSITY SPATIALS -- PHYTO AND NON-PHYTO
@@ -809,11 +576,396 @@ getDivs <- function(phyloPath, domain, gradient, sal, chl) {
 
 # Cruise 3
 p <- getDivs(phyloPath = "data_out/02_qiime2_asv/dataframes/g3_18s_phylo_r70k.RDS", 
-             domain = "Eukaryotes", gradient = "G3", sal = 32.45, chl = 35)
-svg(paste0(fig_dir, "g3_18s_divMetrics.svg"), height = 5, width = 6); p; dev.off() 
+             domain = "Eukaryotes", gradient = "G3", sal = 32.45, chl = 35); p
+svg(paste0(fig_dir, "g3_18s_divMetrics.svg"), height = 5, width = 6); p; dev.off()
+
 p <- getDivs(phyloPath = "data_out/02_qiime2_asv/dataframes/g3_16s_phylo_r50k.RDS", 
-             domain = "Prokaryotes", gradient = "G3", sal = 32.45, chl = 35)
+             domain = "Prokaryotes", gradient = "G3", sal = 32.45, chl = 35); p
 svg(paste0(fig_dir, "g3_16s_divMetrics.svg"), height = 5, width = 6); p; dev.off() 
+
+############################################################################################
+# NON-METRIC MULTIDIMENSIONAL SCALING
+############################################################################################
+
+library(zCompositions)
+library(compositions)
+library(vegan)
+library(tidyverse)
+
+euks <- euks_archive
+proks <- proks_archive #%>% 
+  #filter(!sampleID == "72969")
+
+sample_sums <- proks %>%
+  group_by(sampleID, cruise, filter) %>%
+  summarise(total_rpa = sum(rpa, na.rm = TRUE), .groups = "drop")
+proks %>%
+  group_by(sampleID, group) %>%
+  summarise(total = sum(rpa), .groups = "drop") %>%
+  group_by(sampleID) %>%
+  mutate(rel_abund = total / sum(total)) %>%
+  filter(sampleID %in% c(outlier_id, "72970")) %>%
+  arrange(desc(rel_abund))
+
+# compare distribution
+summary(sample_sums$total_rpa)
+outlier_id <- "72969"   # replace with the actual one from NMDS plot
+sample_sums %>% filter(sampleID == outlier_id)
+
+getNMDS_aitchison <- function(data = NULL, gradient = NULL, plot_title = NULL){
+  
+  temp <- meta %>% mutate(sampleID = as.character(sampleID)) %>% dplyr::select(sampleID, depth)
+  
+  x <- data %>%
+    filter(cruise == gradient) %>%
+    group_by(sampleID, group, filter) %>%
+    summarise(total = sum(rpa), .groups = "drop") %>%
+    pivot_wider(names_from = group, values_from = total, values_fill = 0) %>%
+    left_join(temp, by = "sampleID") %>% relocate(depth, .before = filter)
+  
+  mat <- as.matrix(x[, -(1:3)])  
+  mat_pos <- mat + 1e-6
+  mat_clr <- compositions::clr(acomp(mat_pos))  # Aitchison space
+  
+  set.seed(123)
+  nmds <- metaMDS(mat_clr, distance = "euclidean", k = 2, trymax = 200) # Aitchison
+  
+  nmds_sites <- scores(nmds, display = "sites") %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column("rowid") %>%
+    mutate(sampleID = x$sampleID)
+  
+  df <- nmds_sites %>%
+    merge(meta %>% 
+            dplyr::select(sampleID, region, filter, depth), by = "sampleID") %>%
+    relocate(c("region","filter","depth"), .after = sampleID)
+  
+  stress_value <- round(nmds$stress, 4)
+  
+  # Fit group vectors on the same matrix used for NMDS
+  ef <- vegan::envfit(nmds, x[, -(1:3)], permutations = 0)
+  
+  # Get vector coords + r2/p, scale to plot range, keep top N by r2
+  vec <- as.data.frame(vegan::scores(ef, display = "vectors"))
+  vec$group <- rownames(vec)
+  vec$r2 <- ef$vectors$r
+  vec$p  <- ef$vectors$pvals
+  
+  # scale arrows to ~90% of site score range
+  sites <- vegan::scores(nmds, display = "sites")
+  max_site <- max(abs(sites))
+  max_vec  <- max(sqrt(rowSums(vec[, c("NMDS1","NMDS2")]^2)))
+  scale_fac <- if (max_vec > 0) 0.9 * max_site / max_vec else 1
+  vec <- vec %>%
+    dplyr::mutate(NMDS1 = NMDS1 * scale_fac,
+                  NMDS2 = NMDS2 * scale_fac) %>%
+    dplyr::arrange(dplyr::desc(r2)) %>%
+    dplyr::slice_head(n = 12)  # adjust N as you like
+  
+  plot <- ggplot(df, aes(NMDS1, NMDS2, color = region)) +
+    geom_point(aes(shape = as.character(filter)), size = 4.5, color = "black") +
+    geom_point(aes(shape = as.character(filter)), size = 3) +
+    # arrows
+    geom_segment(data = vec,
+                 aes(x = 0, y = 0, xend = NMDS1, yend = NMDS2),
+                 inherit.aes = FALSE, arrow = arrow(length = unit(0.3, "cm"))) +
+    geom_text(data = vec,
+              aes(x = NMDS1, y = NMDS2, label = group),
+              inherit.aes = FALSE, size = 3, hjust = "inward", vjust = "inward") +
+    scale_color_manual(values = c("#FF79C6", "#8BE9FD", "#FFD700")) +
+    labs(x = "Aitchison NMDS1", y = "Aitchison NMDS2", title = plot_title) +
+    annotate("text", x = Inf, y = -Inf, label = paste("Stress =", stress_value),
+             hjust = 1.1, vjust = -0.5, size = 5) +
+    theme(legend.position = "top")
+  return(plot)
+}
+
+p1e <- getNMDS_aitchison(data = euks, gradient = "G1", plot_title = "Eukaryote"); p1e
+p2e <- getNMDS_aitchison(data = euks, gradient = "G2", plot_title = "Eukaryote"); p2e
+p3e <- getNMDS_aitchison(data = euks, gradient = "G3", plot_title = "Eukaryote"); p3e
+
+p1p <- getNMDS_aitchison(data = proks, gradient = "G1", plot_title = "Prokaryote"); p1p
+p2p <- getNMDS_aitchison(data = proks, gradient = "G2", plot_title = "Prokaryote"); p2p
+p3p <- getNMDS_aitchison(data = proks, gradient = "G3", plot_title = "Prokaryote"); p3p
+
+p <- plot_grid(p1e, p1p, nrow = 1); p
+svg(file = paste0(fig_dir, "G1_NMDS.svg"), height = 5, width = 12); p; dev.off()
+p <- plot_grid(p2e, p2p, nrow = 1); p
+svg(file = paste0(fig_dir, "G2_NMDS.svg"), height = 5, width = 12); p; dev.off()
+p <- plot_grid(p3e, p3p, nrow = 1); p
+svg(file = paste0(fig_dir, "G3_NMDS.svg"), height = 5, width = 12); p; dev.off()
+
+############################################################################################
+# ENVFIT ANALYSIS
+############################################################################################
+# identify which environmental variables (measured or categorical) are significantly aligned with community variation shown in the NMDS
+
+pkgs <- names(sessionInfo()$otherPkgs)
+if (length(pkgs) > 0) {
+  pkgs <- paste0("package:", pkgs)
+  lapply(pkgs, detach, character.only = TRUE, unload = TRUE)
+}
+library("tidyverse")
+library("viridis")
+library("cowplot")
+library("vegan")
+library("ggpubr")
+
+# Function for Taxa Contributions
+getEnvFit_taxa <- function(data = NULL, meta = NULL, survey = NULL){
+  df <- data %>% filter(cruise == survey)
+  meta_g1 <- meta %>% filter(cruise == survey)
+  smps1 <- unique(df$sampleID)
+  smps2 <- unique(meta_g1$sampleID)
+  smps <- intersect(smps1, smps2)
+  meta_g1 <- meta_g1 %>% filter(sampleID %in% smps) %>% 
+    mutate(sampleID = factor(sampleID, levels = smps)) %>% 
+    arrange(sampleID)
+  df <- df %>% filter(sampleID %in% smps) %>% 
+    mutate(sampleID = factor(sampleID, levels = smps)) %>% 
+    arrange(sampleID)
+  com1 <- df %>% select(sampleID, featureID, rpa) %>%
+    spread(featureID, rpa, fill = 0)
+  group_means <- com1 %>%
+    pivot_longer(., cols = -sampleID, names_to = "featureID", values_to = "rpa") %>% distinct %>% 
+    left_join(df %>% select(featureID, group), by = "featureID") %>% distinct %>% 
+    group_by(sampleID, group) %>%
+    summarise(mean_rpa = mean(rpa, na.rm = TRUE)) %>%
+    spread(group, mean_rpa, fill = 0) %>%
+    as.matrix()
+  com_matrix <- as.matrix(com1 %>% select(-sampleID))
+  rownames(com_matrix) <- com1$sampleID
+  bc <- vegdist(com_matrix, method = "bray")
+  nmds_results <- metaMDS(bc, k = 2, trymax = 100)
+  envfit_group <- envfit(nmds_results, group_means, permutations = 999)
+  p <- envfit_group
+  return(p)
+}
+# Function to color the table
+color_table_rows <- function(table_plot, table, survey_colors) {
+  for (i in 1:nrow(table)) {
+    table_plot <- table_cell_bg(
+      table_plot, row = i + 1, column = 1, # row = i + 1 to account for the header row
+      fill = survey_colors[table$Survey[i]],
+      color = "white"
+    )
+  }
+  return(table_plot)
+}
+
+#-------------------------------------------------------------------------------
+# Eukaryotes
+survey_colors <- c("G1" = "#50FA7B", "G2" = "#FFB86C", "G3" = "#BD93F9")
+g1 <- getEnvFit_taxa(data = euks, meta = meta, survey = "G1")
+g2 <- getEnvFit_taxa(data = euks, meta = meta, survey = "G2")
+g3 <- getEnvFit_taxa(data = euks, meta = meta, survey = "G3")
+table <- tribble(
+  ~Survey, ~Taxa,               ~r2,     ~p_value,
+  # G1
+  "G1",    "Alveolata",         0.7638,  0.001,
+  "G1",    "Archaeplastida",    0.3428,  0.001,
+  "G1",    "Haptophyta",        0.3312,  0.001,
+  "G1",    "Opisthokonta",      0.8372,  0.001,
+  "G1",    "Other",             0.2943,  0.001,
+  "G1",    "Rhizaria",          0.1834,  0.032,
+  "G1",    "Stramenopiles",     0.5232,  0.001,
+  "G1",    "Unknown Eukaryote", 0.2900,  0.003,
+  # G2
+  "G2",    "Alveolata",         0.0849,  0.078,
+  "G2",    "Archaeplastida",    0.7729,  0.001,
+  "G2",    "Haptophyta",        0.2384,  0.001,
+  "G2",    "Opisthokonta",      0.3718,  0.001,
+  "G2",    "Other",             0.0075,  0.780,
+  "G2",    "Rhizaria",          0.0358,  0.314,
+  "G2",    "Stramenopiles",     0.1096,  0.022,
+  "G2",    "Unknown Eukaryote", 0.2576,  0.001,
+  # G3
+  "G3",    "Alveolata",         0.7107,  0.001,
+  "G3",    "Archaeplastida",    0.5680,  0.001,
+  "G3",    "Haptophyta",        0.3930,  0.001,
+  "G3",    "Opisthokonta",      0.7309,  0.001,
+  "G3",    "Other",             0.1590,  0.001,
+  "G3",    "Rhizaria",          0.1036,  0.002,
+  "G3",    "Stramenopiles",     0.6084,  0.001,
+  "G3",    "Unknown Eukaryote", 0.1945,  0.001
+) %>%
+  filter(Taxa != "sampleID")
+
+table_plot <- ggtexttable(table, rows = NULL, theme = ttheme("classic"))
+table_plot <- color_table_rows(table_plot, table, survey_colors)
+ggsave(paste0(tab_dir, "envFit_taxa.png"), table_plot, width = 5, height = 7, dpi = 300)
+
+#-------------------------------------------------------------------------------
+# Prokaryotes
+
+proks <- proks_archive
+g1 <- getEnvFit_taxa(data = proks, meta = meta, survey = "G1")
+g2 <- getEnvFit_taxa(data = proks, meta = meta, survey = "G2")
+g3 <- getEnvFit_taxa(data = proks, meta = meta, survey = "G3")
+table <- tribble(
+  ~Survey, ~Taxa,               ~r2,     ~p_value,
+  # G1
+  "G1", "Actinobacteriota",   0.4017, 0.001,
+  "G1", "Archaea",            0.0100, 0.837,
+  "G1", "Bacteroidota",       0.3729, 0.001,
+  "G1", "Other",              0.3214, 0.004,
+  "G1", "Planctomycetota",    0.3689, 0.001,
+  "G1", "Prochlorococcus",    0.5344, 0.001,
+  "G1", "Proteobacteria",     0.4819, 0.001,
+  "G1", "SAR406",             0.4289, 0.001,
+  "G1", "Synechococcus",      0.4469, 0.001,
+  "G1", "Verrucomicrobiota",  0.6447, 0.001,
+  # G2
+  "G2", "Actinobacteriota",   0.4475, 0.001,
+  "G2", "Archaea",            0.3317, 0.001,
+  "G2", "Bacteroidota",       0.4557, 0.001,
+  "G2", "Other",              0.0682, 0.111,
+  "G2", "Planctomycetota",    0.3836, 0.001,
+  "G2", "Prochlorococcus",    0.5563, 0.001,
+  "G2", "Proteobacteria",     0.2230, 0.002,
+  "G2", "SAR406",             0.2991, 0.001,
+  "G2", "Synechococcus",      0.4294, 0.001,
+  "G2", "Verrucomicrobiota",  0.1878, 0.002,
+  # G3
+  "G3", "Actinobacteriota",   0.0312, 0.164,
+  "G3", "Archaea",            0.1522, 0.001,
+  "G3", "Bacteroidota",       0.2547, 0.001,
+  "G3", "Other",              0.3431, 0.001,
+  "G3", "Planctomycetota",    0.1436, 0.001,
+  "G3", "Prochlorococcus",    0.2729, 0.001,
+  "G3", "Proteobacteria",     0.1259, 0.001,
+  "G3", "SAR406",             0.0811, 0.008,
+  "G3", "Synechococcus",      0.2283, 0.001,
+  "G3", "Verrucomicrobiota",  0.1074, 0.002
+)
+table_plot <- ggtexttable(table, rows = NULL, theme = ttheme("classic"))
+table_plot <- color_table_rows(table_plot, table, survey_colors)
+ggsave(paste0(tab_dir, "envFit_taxa_proks.png"), table_plot, width = 5, height = 9, dpi = 300)
+
+############################################################################################
+# ANOSIM ANALYSIS
+############################################################################################
+# rank-based separation metric
+
+library(compositions)   # for clr/acomp
+library(vegan)
+library(dplyr)
+library(tidyr)
+library(flextable)
+`%>%` <- magrittr::`%>%`
+
+make_clr_mat <- function(data, meta, survey){
+  x <- data %>%
+    filter(cruise == survey) %>%
+    group_by(sampleID, filter, group) %>%
+    summarise(total = sum(rpa), .groups = "drop") %>%
+    pivot_wider(names_from = group, values_from = total, values_fill = 0) %>%
+    mutate(sampleID = as.character(sampleID),
+           filter   = as.character(filter),
+           sample_key = paste(sampleID, filter, sep = "||"))
+  
+  # minimal meta with keys + factors you’ll test
+  meta_s <- meta %>%
+    filter(cruise == survey) %>%
+    mutate(sampleID = as.character(sampleID),
+           filter   = as.character(filter),
+           sample_key = paste(sampleID, filter, sep = "||")) %>%
+    # if meta has duplicates, keep first occurrence
+    distinct(sample_key, .keep_all = TRUE)
+  
+  # keep only keys present in BOTH
+  keys <- inner_join(
+    x %>% select(sample_key),
+    meta_s %>% select(sample_key),
+    by = "sample_key"
+  )
+  
+  # optional: quick diagnostics
+  # message("x only: ", nrow(anti_join(x, meta_s, by="sample_key")))
+  # message("meta only: ", nrow(anti_join(meta_s, x, by="sample_key")))
+  
+  x2 <- x     %>% semi_join(keys, by = "sample_key") %>% arrange(sample_key)
+  meta2 <- meta_s %>% semi_join(keys, by = "sample_key") %>% arrange(sample_key)
+  
+  mat <- x2 %>%
+    select(-sampleID, -filter, -sample_key) %>%
+    as.matrix()
+  
+  mat <- mat + 1e-6
+  clr <- compositions::clr(compositions::acomp(mat))
+  
+  stopifnot(nrow(clr) == nrow(meta2))
+  list(clr = clr, meta = meta2)
+}
+
+# ANOSIM only
+run_anosim <- function(clr, meta_df, factor){
+  keep <- !is.na(meta_df[[factor]])
+  clr_k <- clr[keep, , drop = FALSE]
+  g     <- factor(meta_df[[factor]][keep])
+  
+  if (nlevels(g) < 2 || nrow(clr_k) < 3) {
+    return(tibble::tibble(factor = factor, anosim_R = NA_real_, anosim_p = NA_real_))
+  }
+  
+  d <- dist(clr_k, method = "euclidean")  # Aitchison via CLR
+  a <- anosim(d, g, permutations = 999)
+  tibble::tibble(factor = factor, anosim_R = unname(a$statistic), anosim_p = unname(a$signif))
+}
+
+do_anosim_tests <- function(dat, meta, surveys = c("G1","G2","G3"),
+                            factors  = c("region","filter","depth"),
+                            label    = deparse(substitute(dat))){
+  bind_rows(lapply(surveys, function(sv){
+    mm <- make_clr_mat(dat, meta, sv)
+    bind_rows(lapply(factors, function(fa) run_anosim(mm$clr, mm$meta, fa))) %>%
+      mutate(survey = sv)
+  })) %>%
+    mutate(domain = label) %>%
+    select(domain, survey, factor, anosim_R, anosim_p)
+}
+sep_euks  <- do_anosim_tests(euks,  meta) 
+sep_proks <- do_separation_tests(proks, meta)
+sep_all <- bind_rows(sep_euks, sep_proks)
+
+survey_colors <- c("G1" = "#50FA7B", "G2" = "#FFB86C", "G3" = "#BD93F9")
+
+# Prepare table
+ft_data <- sep_all %>%
+  select(domain, survey, factor, anosim_R, anosim_p) %>%
+  arrange(domain, survey, factor) %>%
+  mutate(
+    anosim_R     = round(anosim_R, 3),
+    anosim_p     = round(anosim_p, 3)
+  )
+
+ft <- flextable(ft_data) %>%
+  autofit() %>%
+  theme_vanilla() %>%
+  bold(part = "header") %>%
+  set_header_labels(
+    domain = "Domain",
+    survey = "Survey",
+    factor = "Factor",
+    anosim_R     = "ANOSIM R",
+    anosim_p     = "ANOSIM p"
+  ) %>%
+  # Color Survey cells by Dracula palette
+  bg(i = ~ survey == "G1", j = "survey", bg = survey_colors["G1"]) %>%
+  bg(i = ~ survey == "G2", j = "survey", bg = survey_colors["G2"]) %>%
+  bg(i = ~ survey == "G3", j = "survey", bg = survey_colors["G3"]) %>%
+  color(i = ~ survey %in% names(survey_colors), j = "survey", color = "black") %>%
+  # Highlight significant p-values (<= 0.05) in yellow
+  bg(i = ~ anosim_p <= 0.05,    j = "anosim_p",    bg = "#FFFACD")
+
+ft
+save_as_image(
+  ft, 
+  path = paste0(tab_dir, "anosim_Table.png"),
+  webshot = "webshot2", 
+  zoom = 2,  
+  expand = 1
+)
 
 ############################################################################################
 # END

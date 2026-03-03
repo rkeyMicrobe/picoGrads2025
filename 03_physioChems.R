@@ -35,7 +35,9 @@ tab_dir = "data_out/03_physioChems/tables/"
 ##############################################################################################
 
 # Load in meta 
-smpMeta <- read_csv("data_in/meta/g123_meta.csv")
+smpMeta <- read.csv("data_in/Gradients_metadata.csv") %>% tibble %>% 
+  rename(sampleID = sample.id,
+         station = station.exp)
 
 # Function to handle time observations
 fetchTime_format <- function(df) {
@@ -66,7 +68,7 @@ processUW_data <- function(file_path, file_name, cols_to_select) {
 
 #-------------------------------------------------------------------------------
 # Load Productivity datasets
-path <- "data_in/cmap/productivity/"
+path <- "data_in/meta/productivity/"
 columns <- c("time", "lat", "temp", "sal", "O2_Ar_sat", "NCP")
 NCPRdata <- list(
   g1 = processUW_data(path, "KOK1606_Gradients1_Surface_O2Ar_NCP.csv", columns),
@@ -75,7 +77,7 @@ NCPRdata <- list(
 )
 
 # Load Particulate datasets
-path <- "data_in/cmap/particulates/"
+path <- "data_in/meta/particulates/"
 columns <- c("time", "lat", "pc", "pn")
 PARTdata <- list(
   g1 = processUW_data(path, "Gradients1_KOK1606_PPPCPN_UW.csv", columns),
@@ -103,7 +105,7 @@ fetchTime_zone <- function(df, timeZone = NULL) {
 }
 
 # Load ASV time stamp information and apply fetchTime_zone()
-samp_g12_times <- read.csv("data_in/meta/g12_meta_times.csv") %>%
+samp_g12_times <- read.csv("data_in/g12_meta_times.csv") %>%
   select(Sample_ID, Datetime_ISO8601) %>%
   mutate(
     time = substr(Datetime_ISO8601, 1, nchar(Datetime_ISO8601) - 6),
@@ -114,7 +116,7 @@ samp_g12_times <- read.csv("data_in/meta/g12_meta_times.csv") %>%
   fetchTime_zone(timeZone = "HST") %>%
   select(-Datetime_ISO8601)
 
-samp_g3_times <- read.csv("data_in/meta/g3_meta_times.csv", sep = "\t") %>%
+samp_g3_times <- read.csv("data_in/g3_meta_times.csv", sep = "\t") %>%
   select(sampleID, date, time) %>%
   mutate(
     time = ifelse(nchar(time) == 4, paste0("0", time), time),
@@ -150,7 +152,6 @@ getMatches <- function(mydata = NULL, col_selection = NULL) {
   
   # Load and prepare sample metadata
   g123 <- smpMeta %>% tibble() %>%
-    select(-year) %>%
     merge(., samp_times, by = "sampleID") %>%
     select(-station, -longitude, -time_HST) %>%
     mutate(timeID = paste0(year, "_", month, "_", day), hr_min_sec = time) %>%
@@ -241,8 +242,87 @@ ndf <- getMatches(mydata = dfs, col_selection = 3)
 dfs <- rbind(PARTdata$g1, PARTdata$g2, PARTdata$g3)
 pdf <- getMatches(mydata = dfs, col_selection = 1)
 
+#--- Checks
+chk_NCP <- dplyr::bind_rows(
+  dplyr::mutate(ndf$checks, source = "NCP/PIT"),
+  dplyr::mutate(pdf$checks, source = "POC/PON")
+) %>%
+  filter(source == "NCP/PIT") %>% 
+  dplyr::filter(!is.na(dif_t), !is.na(dif_l)) %>% 
+  distinct
+length(unique(chk_NCP$sampleID))
+
+p_time1 <- ggplot(chk_NCP, aes(x = dif_t)) +
+  geom_histogram(bins = 30) +
+  geom_vline(xintercept = c(3, 6, 12), linetype = 2) +
+  labs(x = "Time difference (hours)", y = "Number of Samples",
+       title = "NCP, time offsets") +
+  theme_minimal()
+p_lat1 <- ggplot(chk_NCP, aes(x = dif_l)) +
+  geom_histogram(bins = 30) +
+  geom_vline(xintercept = c(0.1, 0.25, 0.5), linetype = 2) +
+  labs(x = "Latitudinal difference (degrees)", y = "Number of Samples",
+       title = "NCP, latitude offsets") +
+  theme_minimal()
+
+chk_PART <- dplyr::bind_rows(
+  dplyr::mutate(ndf$checks, source = "NCP/PIT"),
+  dplyr::mutate(pdf$checks, source = "POC/PON")
+) %>%
+  filter(source == "POC/PON") %>% 
+  dplyr::filter(!is.na(dif_t), !is.na(dif_l)) %>% 
+  distinct
+length(unique(chk_PART$sampleID))
+
+p_time2 <- ggplot(chk_PART, aes(x = dif_t)) +
+  geom_histogram(bins = 30) +
+  geom_vline(xintercept = c(3, 6, 12), linetype = 2) +
+  labs(x = "Time difference (hours)", y = "Number of Samples",
+       title = "POC/PON, time offsets") +
+  theme_minimal()
+p_lat2 <- ggplot(chk_PART, aes(x = dif_l)) +
+  geom_histogram(bins = 30) +
+  geom_vline(xintercept = c(0.1, 0.25, 0.5), linetype = 2) +
+  labs(x = "Latitudinal difference (degrees)", y = "Number of Samples",
+       title = "POC/PON, latitude offsets") +
+  theme_minimal()
+
+
+p <- plot_grid(p_time1, p_lat1, p_time2, p_lat2, nrow = 2); p
+svg(paste0(fig_dir, "g123_matchDifferences.svg"), height = 4, width = 10); p; dev.off()
+
+#------------------------------
+# Percentages 
+rbind(chk_PART %>%
+        summarise(
+          df_type = "POC_PON",
+          n_total = n(),
+          n_time = sum(dif_t >= 0 & dif_t <= 4, na.rm = TRUE),
+          n_lat = sum(dif_l < 0.2, na.rm = TRUE),
+          n_time_lat = sum(dif_t >= 0 & dif_t <= 4 & dif_l < 0.2, na.rm = TRUE),
+          time = n_time / n_total,
+          lat = n_lat / n_total,
+          time_lat =  n_time_lat / n_total
+          
+          ),
+      chk_NCP %>%
+        summarise(
+          df_type = "NCP",
+          n_total = n(),
+          n_time = sum(dif_t >= 0 & dif_t <= 4, na.rm = TRUE),
+          n_lat = sum(dif_l < 0.2, na.rm = TRUE),
+          n_time_lat = sum(dif_t >= 0 & dif_t <= 4 & dif_l < 0.2, na.rm = TRUE),
+          time = n_time / n_total,
+          lat = n_lat / n_total,
+          time_lat =  n_time_lat / n_total
+         
+        )   
+      )
+
+#---------------------------------------------------------------------------------
+
 # Make an Environmental Meta df for amplicon samples and save
-final <- smpMeta %>% select(-year, -longitude, -station) %>% 
+final <- smpMeta %>% select(-longitude, -station) %>% 
   merge(., pdf$result %>% select(sampleID, pn, pc), all.x = T) %>% 
   merge(., ndf$result %>% select(sampleID, NCP, O2_Ar_sat, temp, sal), all.x = T) %>% 
   mutate(across(where(is.numeric), ~replace(., is.nan(.), NA))) 
@@ -253,13 +333,11 @@ write.csv(pdf$checks, paste0(dat_dir, "match_particulates.csv"), row.names = F)
 write.csv(ndf$checks, paste0(dat_dir, "match_productivity.csv"), row.names = F)
 
 
-times <- smpMeta %>% 
-  select(sampleID, month, day, time) %>% 
-  rename(UTC_time = time) # Universal time
+samp_times <- read.csv(paste0(dat_dir, "g123_smpTimes.csv")) %>% 
+  select(-X, -time_HST, -dayStatus, -time)
 
 final <- smpMeta %>% 
-  left_join(., times, by = "sampleID") %>% 
-  relocate(year, .before = month) %>% 
+  left_join(., samp_times, by = "sampleID") %>% 
   left_join(., pdf$result, by = "sampleID") %>% 
   left_join(., ndf$result, by = "sampleID") %>% 
   rename(PON = pn, POC = pc) %>% 
@@ -271,11 +349,11 @@ final <- smpMeta %>%
 write.csv(final, paste0(dat_dir, "g123_meta_final.csv"), row.names = F)
 
 x <- final %>%
-  filter(!is.na(UTC_time)) %>% 
+  filter(!is.na(time_UTC)) %>% 
   mutate(depth = case_when(station == "underway" ~ "Underway",
                            station == "tow-fish" ~ "Underway",
                            T ~ as.character(depth))) %>% 
-  mutate(collectionTime = paste(year, month, day, UTC_time, sep = "_")) %>% 
+  mutate(collectionTime = paste(year, month, day, time_UTC, sep = "_")) %>% 
   group_by(cruise, collectionTime, depth, latitude, filter) %>%
   summarise(n_reps = n(), .groups = "drop") %>% 
   arrange(cruise)
@@ -366,7 +444,7 @@ gradient_files <- list(
   G3 = "KM1906_Gradients3.csv"
 )
 water_data <- lapply(names(gradient_files), function(grad) {
-  processWaterCol(file_path = paste0("data_in/cmap/waterColumn/", gradient_files[[grad]]), gradients = grad)
+  processWaterCol(file_path = paste0("data_in/meta/waterColumn/", gradient_files[[grad]]), gradients = grad)
 })
 
 getPlot <- function(data = NULL, sal_front = NULL, chl_front = NULL){
@@ -462,7 +540,7 @@ savePlots <- function(object, dir, variable) {
 
 #-------------------------------------------------------------------------------
 # Process Productivity data
-path <- "data_in/cmap/productivity/"
+path <- "data_in/meta/productivity/"
 prData <- list(
   g1 = read.csv(paste0(path, "KOK1606_Gradients1_Surface_O2Ar_NCP.csv")),
   g2 = read.csv(paste0(path, "MGL1704_Gradients2_Surface_O2Ar_NCP.csv")),
@@ -490,7 +568,7 @@ p <- getPlot(flowData = pr, sampData = meta, variable = "sal", fronts = fronts, 
 savePlots(object = p, dir = fig_dir, variable = "salinity")
 
 #-------------------------------------------------------------------------------
-path <- "data_in/cmap/particulates/"
+path <- "data_in/meta/particulates/"
 paData <- list(
   g1 = read.csv(paste0(path, "Gradients1_KOK1606_PPPCPN_UW.csv")), 
   g2 = read.csv(paste0(path, "Gradients2_MGL1704_PPPCPN_UW.csv")),
@@ -517,24 +595,25 @@ savePlots(object = p, dir = fig_dir, variable = "TotalNitrogen")
 ############################################################################################
 # TRANSECT MAPS
 ############################################################################################
-
+#
 # Load metadata and filter by depth
+smpMeta <- read_csv("data_in/meta/g123_meta.csv")
+
 meta <- smpMeta %>% filter(depth <= 15)
 
 # Define color gradient for latitude
 gradient <- colorRampPalette(c("#50FA7B", "#F1FA8C", "#FFB86C", "#BD93F9"))
 
 # Create ggplot object and extract latitude color mapping
-latCol.tmp <- ggplot(meta, aes(latitude, longitude, color = latitude)) +
+p <- ggplot(meta, aes(latitude, longitude, color = latitude)) +
   geom_point() +
-  scale_color_gradientn(colors = gradient(100)) %>%
-  ggplot_build() %>%
-  .$data[[1]] %>%
+  scale_color_gradientn(colors = gradient(100))
+latCol.tmp <- ggplot_build(p)$data[[1]] %>%
   select(colour, x) %>%
   distinct()
 
 # Merge color mapping with metadata
-latCol <- merge(meta, latCol.tmp, by.x = "latitude", by.y = "x")
+latCol <- meta %>% left_join(latCol.tmp, by = c("latitude" = "x"))
 
 # Function to generate map plot
 generate_map_plot <- function(data, cruise.type, sal_front = NULL, chla_front = NULL) {
@@ -558,7 +637,7 @@ generate_map_plot <- function(data, cruise.type, sal_front = NULL, chla_front = 
 }
 
 # Generate and save the plots
-directory <- "3.0_"
+directory <- "03_figures"
 cruise_types <- c("G1", "G2", "G3")  # Add cruise types
 sal_fronts <- c(32.15, 32.5, 32.45)  # Define salinity fronts
 chl_fronts <- c(33, 36.2, 35)        # Define chlorophyll fronts
@@ -569,13 +648,13 @@ for (i in seq_along(cruise_types)) {
   p[[cruise_types[i]]] <- generate_map_plot(latCol, cruise_types[i], sal_fronts[i], chl_fronts[i])
 }
 
-# Save the plots
-for (i in seq_along(p)) {
-  file_name <- paste0("results/", directory, "plots/", cruise_types[i], "_map_white.svg")
-  svg(file_name, height = 8, width = 8)
-  print(p[[cruise_types[i]]])
-  dev.off()
-}
+p$G1
+p$G2
+p$G3
+
+svg(paste0(fig_dir, "G1_map_white.svg"), height = 8, width = 8); print(p$G1); dev.off()
+svg(paste0(fig_dir, "G2_map_white.svg"), height = 8, width = 8); print(p$G2); dev.off()
+svg(paste0(fig_dir, "G3_map_white.svg"), height = 8, width = 8); print(p$G3); dev.off()
 
  ############################################################################################
 # UPDATE SAMPLE METAFILE WITH NORTH PACIFIC REGION CATEGORIES
@@ -690,12 +769,12 @@ physio <- read_csv(paste0(dat_dir, "g123_meta_physioChems.csv")) %>%
   rename(PON = pn, POC = pc)
 
 
-dat <- meta %>%
+dat <- smpMeta %>%
   left_join(., station_info, by = "sampleID") %>% 
   select(sampleID, cruise, latitude, depth, filter, collection, region) %>%
   distinct()
 
-times <- read.csv("data_in/meta/g123_smpTimes.csv") %>% 
+times <- read.csv("data_in/Gradients_smpTimes.csv") %>% 
   select(sampleID, time_UTC)
 
 dat <- dat %>% left_join(., times, by = "sampleID") %>% 

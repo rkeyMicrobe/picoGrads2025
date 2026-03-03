@@ -13,7 +13,7 @@ rm(list = ls()); gc(); cat("\014")
 ##############################################################################################
 
 # Change this per each power testing 
-power = 8
+power = 9
 
 # LOAD PACKAGES
 library("tidyverse")
@@ -86,6 +86,71 @@ tax_16s <- rbind(getTaxonomy(file = paste0(in_dir, "g1_16s_master_0-200m.feather
 tax <- rbind(tax_18s, tax_16s)
 
 ############################################################################################
+# Isolate Rare ASVs so we can remove from WGCNA analysis
+############################################################################################
+# LOAD RAW AMPLICON COUNT TABLES
+smps <- unique(amps$sampleID)
+read_count_table <- function(cruise_name, count_table_path) {
+  
+  meta <- read.csv("data_in/Gradients_metadata.csv") %>% tibble %>% 
+    rename(sampleID = sample.id,
+           station = station.exp)
+  samps <- meta %>% 
+    filter(cruise == cruise_name) %>% 
+    select(sampleID) %>% 
+    pull()
+  asv <- read.csv(count_table_path, sep = "\t")
+  colnames(asv) <- str_remove(colnames(asv), pattern = "X")
+  asv <- asv %>%
+    pivot_longer(., cols = 2:(ncol(.)), names_to = "sampleID", values_to = "counts") %>%
+    filter(sampleID %in% samps)
+  return(asv)
+}
+# Function to isolate rare taxa
+findRares <- function(data = NULL, sampleNumber = NULL){
+  feat_stats <- data %>%
+    group_by(featureID) %>%
+    summarise(
+      n_ge3 = sum(counts > 3, na.rm = TRUE),   # samples where counts > 3
+      prop_ge3 = n_ge3 / sampleNumber,
+      .groups = "drop"
+    )
+  remove_ids <- feat_stats %>%
+    filter(prop_ge3 < 0.10) %>%                 # fail the rule
+    pull(featureID)
+  return(remove_ids)
+}
+asv.pro1 <- read_count_table("G1", "data_in/g1/g1_16s_countTable.csv")
+asv.pro2 <- read_count_table("G2", "data_in/g2/g2_16s_countTable.csv")
+asv.pro3 <- read_count_table("G3", "data_in/g3/g3_16s_countTable.csv")
+bad_lists <- list(
+  g1 = findRares(asv.pro1, n_distinct(asv.pro1$sampleID)),
+  g2 = findRares(asv.pro2, n_distinct(asv.pro2$sampleID)),
+  g3 = findRares(asv.pro3, n_distinct(asv.pro3$sampleID))
+)
+asv_ids <- colnames(amps)
+bad_all <- Reduce(intersect, bad_lists)
+intersect(bad_all, colnames(amps))
+ids_prok <- intersect(bad_all, colnames(amps))
+
+asv.euk1 <- read_count_table("G1", "data_in/g1/g1_18s_countTable.csv")
+asv.euk2 <- read_count_table("G2", "data_in/g2/g2_18s_countTable.csv")
+asv.euk3 <- read_count_table("G3", "data_in/g3/g3_18s_countTable.csv")
+bad_lists <- list(
+  g1 = findRares(asv.euk1, n_distinct(asv.euk1$sampleID)),
+  g2 = findRares(asv.euk2, n_distinct(asv.euk2$sampleID)),
+  g3 = findRares(asv.euk3, n_distinct(asv.euk3$sampleID))
+)
+asv_ids <- colnames(amps)
+bad_all <- Reduce(intersect, bad_lists)
+intersect(bad_all, colnames(amps))
+ids_euks <- intersect(bad_all, colnames(amps))
+
+# Remove the rare occurences from the CLR'd dataframe
+ids_remove <- c(ids_euks, ids_prok)
+amps_clean <- amps %>% select(-all_of(ids_remove))
+
+############################################################################################
 # LOAD IN PHYSIOCHEMICAL VARIABLES
 variables = "Testing" # We are looking at all variables: NCP, POC, and PON
 ############################################################################################
@@ -98,6 +163,7 @@ smps_pon <- read.csv(paste0(lmm_dir, "boxcox_PON.csv")) %>% tibble
 ############################################################################################
 # FILTER DOWN TO ONLY SAMPLES THAT CONTAIN NCP, POC, AND PON MEASUREMENT
 ############################################################################################
+amps <- amps_clean
 
 # Find samples shared between amps and the 3 environment variables
 length(amps$sampleID)

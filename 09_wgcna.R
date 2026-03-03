@@ -83,6 +83,71 @@ tax_16s <- rbind(getTaxonomy(file = paste0(in_dir, "g1_16s_master_0-200m.feather
 tax <- rbind(tax_18s, tax_16s)
 
 ############################################################################################
+# Isolate Rare ASVs so we can remove from WGCNA analysis
+############################################################################################
+# LOAD RAW AMPLICON COUNT TABLES
+smps <- unique(amps$sampleID)
+read_count_table <- function(cruise_name, count_table_path) {
+  
+  meta <- read.csv("data_in/Gradients_metadata.csv") %>% tibble %>% 
+    rename(sampleID = sample.id,
+           station = station.exp)
+  samps <- meta %>% 
+    filter(cruise == cruise_name) %>% 
+    select(sampleID) %>% 
+    pull()
+  asv <- read.csv(count_table_path, sep = "\t")
+  colnames(asv) <- str_remove(colnames(asv), pattern = "X")
+  asv <- asv %>%
+    pivot_longer(., cols = 2:(ncol(.)), names_to = "sampleID", values_to = "counts") %>%
+    filter(sampleID %in% samps)
+  return(asv)
+}
+# Function to isolate rare taxa
+findRares <- function(data = NULL, sampleNumber = NULL){
+  feat_stats <- data %>%
+    group_by(featureID) %>%
+    summarise(
+      n_ge3 = sum(counts > 3, na.rm = TRUE),   # samples where counts > 3
+      prop_ge3 = n_ge3 / sampleNumber,
+      .groups = "drop"
+    )
+  remove_ids <- feat_stats %>%
+    filter(prop_ge3 < 0.10) %>%                 # fail the rule
+    pull(featureID)
+  return(remove_ids)
+}
+asv.pro1 <- read_count_table("G1", "data_in/g1/g1_16s_countTable.csv")
+asv.pro2 <- read_count_table("G2", "data_in/g2/g2_16s_countTable.csv")
+asv.pro3 <- read_count_table("G3", "data_in/g3/g3_16s_countTable.csv")
+bad_lists <- list(
+  g1 = findRares(asv.pro1, n_distinct(asv.pro1$sampleID)),
+  g2 = findRares(asv.pro2, n_distinct(asv.pro2$sampleID)),
+  g3 = findRares(asv.pro3, n_distinct(asv.pro3$sampleID))
+)
+asv_ids <- colnames(amps)
+bad_all <- Reduce(intersect, bad_lists)
+intersect(bad_all, colnames(amps))
+ids_prok <- intersect(bad_all, colnames(amps))
+
+asv.euk1 <- read_count_table("G1", "data_in/g1/g1_18s_countTable.csv")
+asv.euk2 <- read_count_table("G2", "data_in/g2/g2_18s_countTable.csv")
+asv.euk3 <- read_count_table("G3", "data_in/g3/g3_18s_countTable.csv")
+bad_lists <- list(
+  g1 = findRares(asv.euk1, n_distinct(asv.euk1$sampleID)),
+  g2 = findRares(asv.euk2, n_distinct(asv.euk2$sampleID)),
+  g3 = findRares(asv.euk3, n_distinct(asv.euk3$sampleID))
+)
+asv_ids <- colnames(amps)
+bad_all <- Reduce(intersect, bad_lists)
+intersect(bad_all, colnames(amps))
+ids_euks <- intersect(bad_all, colnames(amps))
+
+# Remove the rare occurences from the CLR'd dataframe
+ids_remove <- c(ids_euks, ids_prok)
+amps_clean <- amps %>% select(-all_of(ids_remove))
+
+############################################################################################
 # LOAD IN PHYSIOCHEMICAL VARIABLES
 variables = "allVars" # We are looking at all variables: NCP, POC, and PON
 ############################################################################################
@@ -97,16 +162,16 @@ smps_pon <- read.csv(paste0(lmm_dir, "boxcox_PON.csv")) %>% tibble
 ############################################################################################
 
 # Find samples shared between amps and the 3 environment variables
-length(amps$sampleID)
+length(amps_clean$sampleID)
 temp_smps <- Reduce(intersect, list( # Only look to see how many NCP samples
-  amps$sampleID,
+  amps_clean$sampleID,
   smps_ncp$sampleID
 ))
-length(amps$sampleID)
+length(amps_clean$sampleID)
 length(temp_smps)
 
 shared_smps <- Reduce(intersect, list( # Consider NCP, POC, and PON
-  amps$sampleID,
+  amps_clean$sampleID,
   smps_ncp$sampleID,
   smps_poc$sampleID,
   smps_pon$sampleID
@@ -123,22 +188,22 @@ vars <- smps_ncp %>% filter(sampleID %in% shared_smps) %>%
   left_join(., cleanUp(data = smps_pon, smp_list = shared_smps, column = pn))
   
 # Handle Amplicon dataset and chronologically order samples based on var dataset
-x <- amps %>% filter(sampleID %in% shared_smps) %>% as.data.frame()
+x <- amps_clean %>% filter(sampleID %in% shared_smps) %>% as.data.frame()
 dim(x)
 rownames(x) <- x$sampleID
 rows_to_order <- intersect(vars$sampleID, rownames(x))
 x <- x[rows_to_order, ]
-amps <- x %>% tibble
+amps_clean <- x %>% tibble
 
 # Bind the Var dataset with Amp datset
 data <- cbind(vars %>% select(NCP, pc, pn), 
-              amps) %>% tibble %>% 
+              amps_clean) %>% tibble %>% 
   relocate(sampleID, .before = NCP) %>% 
   select(-cruise, -sampleID)
 
 # transpose for samples as columns
 x <- as.data.frame(t(data))
-colnames(x) <- as.character(amps$sampleID)
+colnames(x) <- as.character(amps_clean$sampleID)
 x %>% tibble
 
 ############################################################################################
@@ -230,42 +295,38 @@ unique(labels2colors(netwk$colors))
 
 # Custom Names for network clusters
 custom_names <- c(
-  "yellow"      = "Yellow",
-  "red"         = "Red",
-  "grey"        = "Gray",
-  "blue"        = "Blue",
-  "turquoise"   = "Cyan",
-  "green"       = "Purple",
-  "purple"      = "Green",
-  "salmon"      = "Clay",
-  "brown"       = "Brown",
-  "tan"         = "Orange",
-  "pink"        = "Pink",
-  "black"       = "Black",
-  "magenta"     = "Plum",
-  "greenyellow" = "Lime"
-) #Get WGCNA color names and rename them
+  "yellow"    = "Purple",
+  "brown"     = "Yellow",
+  "pink"      = "Teal",
+  "grey"      = "Black",
+  "green"     = "Red",
+  "blue"      = "Blue",
+  "turquoise" = "Sky",
+  "red"       = "Orange",
+  "magenta"   = "Pink",
+  "black"     = "Gray"
+)
+
+#Get WGCNA color names and rename them
 module_colors <- labels2colors(netwk$colors)
 module_names <- custom_names[module_colors]
 netwk$moduleColors <- module_names
 
 # Custom colors for network clusters
 custom_colors <- c(
-  "Yellow"      = "#F1FA8C",  # Yellow - dracula palette
-  "Red"         = "#FF5555",  # Red - dracula palette
-  "Gray"        = "#44475A",  # Gray - dracula palette
-  "Blue"        = "blue",     # Blue - Standard
-  "Cyan"        = "turquoise",# Turquoise- Standard
-  "Purple"      = "#BD93F9",  # Purple - dracula palette
-  "Green"       = "#50FA7B",  # Green - dracula palette
-  "Clay"        = "#FF9E8A",  # Clay - Custom made hex
-  "Brown"       = "#4B2E2B",    # Brown - Standard
-  "Orange"      = "#FFB86C",  # Orange - dracula palette
-  "Pink"        = "#FF9CCF",  # Pink - Custom made hex
-  "Black"       = "black",    # Black - Standard
-  "Plum"        = "#A44E9A",  # Plum - Custom made hex
-  "Lime"        = "#C5F779"   # Lime - Custom made hex
-) # Apply chosen color palette
+  "Purple" = "#7570B3",  # Blue from attachment
+  "Yellow" = "#FFD92F",  # Light blue from attachment
+  "Teal"   = "#66C2A5",  # Gray from attachment
+  "Black"  = "#5D574E",  # Peach from attachment
+  "Red"    = "#FC8D62",  # Orange from attachment
+  "Blue"   = "#377EB8",  # Beige from attachment
+  "Sky"    = "#A6CEE3",  # Lavender from attachment
+  "Orange" = "#FED9A6",  # Orange (manual keep)
+  "Pink"   = "#E78AC3",  # Pink (manual keep)
+  "Gray"   = "#B3B3B3"   # Neutral gray
+)
+
+# Apply chosen color palette
 netwk$moduleColorsHex <- custom_colors[netwk$moduleColors]
 
 # Make Cluster Dendrogram
@@ -331,7 +392,9 @@ taxonomy <- cyt$nodeData %>% tibble %>%
   left_join(., tax, by = "featureID") %>% 
   mutate(asv = str_sub(featureID, 1, 5),
          asv = paste0(asv, "_", specific, "_", species)) %>% 
-  distinct
+  distinct %>% 
+  mutate(cluster = case_when(is.na(cluster) ~ "Black",
+                             T ~ cluster))
 unique(taxonomy$specific)
 unique(taxonomy$cluster)
 write.csv(taxonomy, 
@@ -409,7 +472,7 @@ p <- ggplot(corr_data, aes(x = Variable,
         plot.title = element_text(hjust = 0.5),
         legend.position = "right")
 p
-svg(paste0(fig_dir, "5_corr_phytos_", variables, ".svg"), height = 5, width = 3); p; dev.off()
+ svg(paste0(fig_dir, "5_corr_phytos_", variables, ".svg"), height = 5, width = 3); p; dev.off()
 
 ############################
 
@@ -424,18 +487,21 @@ results <- corr_data %>%
       return(NA)
     }
   }))
+write_csv(results, paste0(dat_dir, "4_corrEigens_phytos_", 
+                          variables, "_p", power, "_m", modsize, "_", TOM_type, ".txt"))
+
+
 results$Significant <- results$p_value < 0.05
 
 x <- results %>% filter(Correlation < 0)
 min(x$Correlation)
 max(x$Correlation)
 
-x <- results %>% filter(Correlation > 0) %>% filter(!Module %in% c("Yellow", "Purple"))
-x
-
-
-write_csv(results, paste0(dat_dir, "4_corrEigens_phytos_", 
-                          variables, "_p", power, "_m", modsize, "_", TOM_type, ".txt"))
+goodModules = c("Yellow", "Teal", "Purple")
+x <- results %>% filter(Correlation <= 0) %>% filter(!Module %in% goodModules);  min(x$Correlation); max(x$Correlation)
+x <- results %>% filter(!Module %in% goodModules); min(x$Correlation); max(x$Correlation)
+x <- results %>% filter(Correlation >= 0) %>% filter(!Module %in% goodModules); x
+x <- results %>% filter(Correlation > 0) %>% filter(Module %in% goodModules); x
 
 ############################################################################################
 # MODULE TAXONOMY COMPOSITION
@@ -449,10 +515,16 @@ taxonomy_summary <- taxonomy %>%
   group_by(cluster, specific) %>%
   reframe(count = n()) %>% 
   complete(cluster, specific, fill = list(count = 0)) 
-  
+
+unique(taxonomy_summary$specific)
+order <- c("Prochlorococcus", "Synechococcus", "Dinoflagellata",  
+           "Haptophyta", "Stramenopiles", "Archaeplastida") 
 
 p <- taxonomy_summary %>% 
-  mutate(count = as.numeric(count)) %>% 
+  mutate(
+    count = as.numeric(count),
+    specific = factor(specific, levels = order)  # set facet order
+  ) %>% 
   ggplot(aes(y = factor(cluster, levels = cluster_order), 
              x = count, 
              fill = "cluster")) + 
@@ -477,7 +549,7 @@ taxonomy_summary <- taxonomy %>%
   arrange(species, cluster)
  unique(taxonomy_summary$species)
 
-species_order <- c("Bathycoccus_prasinos", 
+ species_order  <- c("Bathycoccus_prasinos", 
            "Micromonas_commoda_A2",  
            "Chloroparvula_pacifica", 
            "Picozoa_XXXXX_sp.",
@@ -511,19 +583,22 @@ svg(paste0(fig_dir, "6_comps_archae_", variables, ".svg"), height = 4.5, width =
 library(flextable)
 library(webshot2)
 
-cluster_info <- taxonomy %>% filter(cluster %in% c("Yellow", "Purple")) %>% 
+cluster_info <- taxonomy %>% filter(cluster %in% goodModules) %>% 
   select(-asv) %>% rename(Group = specific) %>% 
   rename(ASV_ID = featureID, Cluster = cluster,
          Phylum = phylum, Class = class, Order = order, Family = family, 
          Genus = genus, Species = species) %>% 
   select(Cluster, ASV_ID, Group, Phylum, Class, Order, Family, Genus, Species) %>% 
   arrange(Cluster, Phylum) 
+unique(cluster_info$Cluster)
 
 # Save clusters of interest
 cluster_yell <- cluster_info %>% filter(Cluster == "Yellow")
 cluster_purp <- cluster_info %>% filter(Cluster == "Purple")
+cluster_teal <- cluster_info %>% filter(Cluster == "Teal")
 write.csv(cluster_yell, paste0(dat_dir, "wgcna_yellow_modASVs_p6.csv"), row.names = F)
 write.csv(cluster_purp, paste0(dat_dir, "wgcna_purple_modASVs_p6.csv"), row.names = F)
+write.csv(cluster_teal, paste0(dat_dir, "wgcna_teal_modASVs_p6.csv"), row.names = F)
 
 # Clean up Names for Table
 cluster_info <- cluster_info %>% 
@@ -536,20 +611,22 @@ cluster_info <- cluster_info %>%
          )
 
 cluster_info %>% filter(ASV_ID %in% c("NCP", "POC", "PON"))
-cluster_colors <- c("Purple" = "#BC80BD", "Yellow" = "#FFED6F")
+cluster_colors <- c("Purple" = "#7570B3", "Yellow" = "#FFD92F", "Teal" = "#66C2A5")
 
 table <- cluster_info %>%
   flextable()  %>%
+  color(i = ~Cluster == "Teal", j = "Cluster", color = "black") %>%
   color(i = ~Cluster == "Purple", j = "Cluster", color = "white") %>%
   color(i = ~Cluster == "Yellow", j = "Cluster", color = "black") %>%
   bg(i = ~Cluster == "Purple", j = "Cluster", bg = cluster_colors["Purple"]) %>%
   bg(i = ~Cluster == "Yellow", j = "Cluster", bg = cluster_colors["Yellow"]) %>%
-  bg(i = ~Cluster == "Red", j = "Cluster", bg = cluster_colors["Red"]) %>%
-  bold(i = ~Cluster %in% c("Purple", "Yellow", "Red"), j = "Cluster", bold = TRUE) %>%
+  bg(i = ~Cluster == "Teal", j = "Cluster", bg = cluster_colors["Teal"]) %>%
+  bold(i = ~Cluster %in% c("Purple", "Yellow", "Teal"), j = "Cluster", bold = TRUE) %>%
   autofit()
+table
+save_as_image(table, path = paste0(tab_dir, "clusterInfoTable_purpleTealYellow.png"))
 
-save_as_image(table, path = paste0(tab_dir, "clusterInfoTable_purpleYellow.png"))
-
+cluster_info %>% filter(ASV_ID == "asv87490")
 # End
 
 

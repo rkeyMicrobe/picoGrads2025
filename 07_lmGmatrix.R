@@ -183,7 +183,17 @@ vars <- c("temp", "sal", "pn", "pc", "NCP")
 
  # Load and Combine Data
 vars_df <- read.csv("data_out/03_physioChems/dataframes/g123_meta_physioChems.csv") %>% 
-  select(all_of(samp_info), all_of(vars)) 
+  select(all_of(samp_info), all_of(vars)) %>% 
+  tibble() %>%
+  mutate(depth = case_when(
+    depth == "surface" ~ 15,
+    depth == "DCM"     ~ 60,
+    depth == ""        ~ NA_real_,
+    TRUE               ~ as.numeric(depth)
+  )) %>% 
+  drop_na(depth) %>% 
+  drop_na(latitude)
+dim(vars_df)
 
 time_df <- read.csv("data_out/03_physioChems/dataframes/g123_smpTimes.csv") %>%
   select(sampleID, time_HST, month)
@@ -231,6 +241,10 @@ df_pn <- getSamps_and_normalize(vars_df, "pn") %>% select(-time_HST)
 df_pc <- getSamps_and_normalize(vars_df, "pc") %>% select(-time_HST)
 df_ncp <- getSamps_and_normalize(vars_df, "NCP") %>% select(-time_HST)
 
+write.csv(df_ncp, paste0(dat_dir, "boxcox_NCP.csv"), row.names = F)
+write.csv(df_pc, paste0(dat_dir, "boxcox_POC.csv"), row.names = F)
+write.csv(df_pn, paste0(dat_dir, "boxcox_PON.csv"), row.names = F)
+
 
 # Plot Histograms of Normalized Variables
 par(mfrow = c(1, 3))
@@ -239,7 +253,7 @@ hist(df_pc$pc, main = "Total Carbon", xlab = "Values")
 hist(df_ncp$NCP, main = "Net Comm Production", xlab = "Values")
 par(mfrow = c(1, 1))
 
- # Create List of Normalized Variables
+# Create List of Normalized Variables
 var_data <- list(
   carbon = df_pc,
   nitrogen = df_pn,
@@ -338,7 +352,7 @@ ncp_gmat <- lapply(names(netComm), function(df_name) make_Gmatrix(data = netComm
 #  SAVING GMATRICE DATA OBJECT
 ############################################################################################
 ############################################################################################
-
+dat_dir = "data_out/07_lmGmatrix/dataframes/"
 gmats <- list(carbon = pc_gmat, 
               nitrogen = pn_gmat,
               netComm = ncp_gmat)
