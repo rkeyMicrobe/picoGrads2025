@@ -4,12 +4,13 @@
 
 **Author:** Rebecca Key (R.S.Key; ORCiD 0000-0002-9516-1645)  
 **Repository:** [picoGrads2025](https://github.com/rkeyMicrobe/picoGrads2025)  
-**Manuscript:** Submitted to *mSystems* on May 29, 2025
+**Manuscript:** Submitted to *mSystems* on May 29, 2025. Accepted December 21, 2025. Published January 16, 2026. 
 
 ---
 
 This repository contains the analysis code and supporting files for:  
 **_Picophytoplankton Implicated in Productivity and Biogeochemistry in the North Pacific Transition Zone_**
+**Publication:** [mSystems DOI](https://doi.org/10.1128/msystems.00801-25)
 **Preprint:** [bioRxiv DOI](https://doi.org/10.1101/2025.05.29.656823)
 
 For questions or to report issues, please open an [Issue](https://github.com/rkeyMicrobe/picoGrads2025/issues) or contact **Rebecca S. Key** or **Bryndan Durham** (contact info at end)
@@ -41,20 +42,17 @@ For questions or to report issues, please open an [Issue](https://github.com/rke
 
 ## Analysis Scripts
 
-This repository includes 12 R scripts forming a custom, multi-step pipeline for amplicon sequence analysis (using phyloseq), multivariate mixed linear modeling (sommer), and network inference (WGCNA, SpiecEasi).
+This repository contains 12 R scripts. It is a step-by-step pipeline (1 to 12) for the entire analysis. Basic amplicon analysis using phyloseq, multivariate mixed linear modeling using sommer, and network analyses using WGCNA and SpiecEasi.
 
 **How to run:**
 
 - Start with `01_qiime2.R`
 
-- Proceed step-by-step through each numbered script up to `12_speicEasiAnalysis.R`
+- Proceed step-by-step through each numbered script, until the last step: `12_speicEasiAnalysis.R`
 
-⚠️ For`10_wgcnaPowerTest.R` — re-run this script for each power value you wish to test (power = ??)
+⚠️ For`10_wgcnaPowerTest.R` — re-run this script for each power value you wish to test (power = ??). I didn't make it a loop script so you have to repetively run the script after changing the power variable.
 
-Simple and reproducible: As long as the required inputs for `01_qiime2.R` are in place, you can generate all dataframes, figures, and tables used in the manuscript.
-
-
-There are 12 .R scripts in total and are contained in this project folder. This is custom build multi-step pipeline for amplicon sequencing analysis using *phyloseq*, multivariate mixed linear models using *sommer*, and network inference using *WGCNA* and *SpeicEasi* packages. 
+Simple and reproducible: As long as you have the starting inputs for `01_qiime2.R`, you can generate all dataframes, figures, and tables used in the manuscript.
 
 If you have any questions, please feel free to reach out!
 
@@ -83,23 +81,18 @@ Below is the full list of R packages used in this pipeline:
 ## Data Availability
 
 Due to Github file size limits, raw and processed sequencing data are hosted externally:  
-- Processed dataframes: Zenodo link Coming soon! :) 
-- Raw amplicon dataframes: NCBI link coming soon!
+- Processed dataframes: [Zenodo Record](https://zenodo.org/records/17288024)  
+- Raw amplicon dataframes: [NCBI BioProject](https://www.ncbi.nlm.nih.gov/bioproject/PRJNA1302492/)
 - Or contact the authors for `01_qiime2.R` input files.
 
 This repository contains scripts only. **The total size after running everything is 5.1GB!** 
 
 ## Acknowledgments
 
-We thank the scientific team and crew of the R/V Kaʻimikai-O-Kanaloa (KOK1606; Gradients 1), R/V
-Marcus G. Langseth (MGL1704; Gradients 2), and R/V Kilo Moana (KM1906; Gradients 3) and the
-operational staff of the Simons Collaboration on Ocean Processes and Ecology (SCOPE) team. We also
-thank Bennet Lambert for early assistance with ASV data processing. This work was supported by
-grants from the Simons Foundation (Awards 823165 and 999397 to BPD; Award 721244 to EVA;
-Award 724220 to JPZ; Award 426570SP to EVA and JPZ; Award 00012203 to SNC) as part of the
-SCOPE Program.
+We thank the scientific team and crew of the R/V Kaʻimikai-O-Kanaloa (KOK1606; Gradients 1), R/V Marcus G. Langseth (MGL1704; Gradients 2), and R/V Kilo Moana (KM1906; Gradients 3) and the operational staff of the Simons Collaboration on Ocean Processes and Ecology (SCOPE) team. We also thank Bennet Lambert for early assistance with ASV data processing.
+This work was supported by grants from the Simons Foundation (Awards 823165 and 999397 to B.P.D.; Award 721244 to E.V.A.; Award 724220 to J.P.Z.; Award 426570SP to E.V.A. and J.P.Z.; Award 00012203 to S.N.C.) as part of the SCOPE Program.
 
-Special thanks to the [Durham Lab](https://durhamlab.org/) and collaborators for fieldwork and discussion
+R.S.K., B.P.D., and E.V.A. conceived the research project. E.V.A., J.P.Z., M.R.G., H.F., and B.P.D. planned fieldwork sampling design. R.S.K. led data analysis, data interpretation, figure generation, and manuscript writing, with supervision from B.P.D, and S.N.C. and E.V.A. assisted with refinement of research design. M.R.G. collected seawater samples. R.L.M., H.F., and M.R.G. prepared samples for ASV sequencing. All authors contributed to reviewing and revising the manuscript.
 
 ## Contact
 
